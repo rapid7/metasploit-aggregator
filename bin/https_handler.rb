@@ -13,7 +13,7 @@ server = Msf::Aggregator::MsgPackServer.new(admin_host, admin_port)
 server.start
 
 client = Msf::Aggregator::ServerProxy.new(admin_host, admin_port)
-client.register_listener(listener, 8443, nil)
+client.add_cable(listener, 8443, cert_string)
 client.register_default(remote_console, 5000, nil)
 client.stop
 

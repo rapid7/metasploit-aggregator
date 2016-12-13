@@ -18,6 +18,10 @@ module Msf
         # index for impl
       end
 
+      def listeners
+        # index for impl
+      end
+
       # sets forwarding for a specific session to promote
       # that session for local use, obtained sessions are
       # not reported in getSessions
@@ -33,12 +37,16 @@ module Msf
       # start a listening port maintained on the service
       # connections are forwarded to any registered default
       # TODO: may want to require a type here for future proof of api
-      def register_listener(host, port, certificate)
+      def add_cable(host, port, certificate)
+        # index for impl
+      end
+
+      def remove_cable(host, port)
         # index for impl
       end
 
       def register_default(lhost, lport, payload_list)
-
+        # index for impl
       end
 
       # returns list of IP addressed available to the service
@@ -68,6 +76,13 @@ module Msf
         Logger.log(e.to_s)
       end
 
+      def listeners
+        @client.call(:cables)
+      rescue MessagePack::RPC::TimeoutError => e
+        Logger.log(e.to_s)
+      end
+
+
       def obtain_session(payload, lhost, lport)
         @client.call(:obtain_session, payload, lhost, lport)
       rescue MessagePack::RPC::TimeoutError => e
@@ -80,8 +95,14 @@ module Msf
         Logger.log(e.to_s)
       end
 
-      def register_listener(host, port, certificate)
-        @client.call(:register_listener, host, port, certificate)
+      def add_cable(host, port, certificate)
+        @client.call(:add_cable, host, port, certificate)
+      rescue MessagePack::RPC::TimeoutError => e
+        Logger.log(e.to_s)
+      end
+
+      def remove_cable(host, port)
+        @client.call(:remove_cable, host, port)
       rescue MessagePack::RPC::TimeoutError => e
         Logger.log(e.to_s)
       end
@@ -93,7 +114,7 @@ module Msf
       end
 
       def available_ingress
-        @client.call(:available_ingress)
+        @client.call(:available_addresses)
       rescue MessagePack::RPC::TimeoutError => e
         Logger.log(e.to_s)
       end
@@ -115,11 +136,6 @@ module Msf
         @executor = Thread.new do
           begin
             @manager = Msf::Aggregator::ConnectionManager.new
-            # @admin_listener = @manager.create_admin_listener(@admin_host, @admin_port)
-
-            # forwarder = Msf::Aggregator::HttpsForwarder.new(remote_console, 5000, "default")
-            # forwarder.log_messages = true
-            # @manager.create_https_listener(remote_listener, 8443, forwarder)
           rescue
             $stderr.puts $!
           end
@@ -129,6 +145,10 @@ module Msf
 
       def sessions
         @manager.connections
+      end
+
+      def cables
+        @manager.cables
       end
 
       def obtain_session(payload, rhost, rport)
@@ -142,12 +162,18 @@ module Msf
         @manager.park(payload)
       end
 
-      def register_listener(host, port, certificate)
+      def add_cable(host, port, certificate)
         unless @executor.nil?
           # TODO: check if already listening on that port
           @manager.create_https_listener(host, port, certificate)
         end
         true
+      end
+
+      def remove_cable(host, port)
+        unless @executor.nil?
+          @manager.remove_cable(host, port)
+        end
       end
 
       def register_default(lhost, lport, payload_list)
@@ -157,7 +183,7 @@ module Msf
         true
       end
 
-      def available_ingress
+      def available_addresses
         addr_list = Socket.ip_address_list
         addresses = []
         addr_list.each do |addr|
