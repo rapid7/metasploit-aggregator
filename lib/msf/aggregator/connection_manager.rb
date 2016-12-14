@@ -3,6 +3,7 @@ require 'socket'
 
 require 'msf/aggregator/logger'
 require 'msf/aggregator/https_forwarder'
+require 'msf/aggregator/cable'
 
 module Msf
   module Aggregator
@@ -11,6 +12,8 @@ module Msf
 
       def initialize
         @cables = []
+        @manager_mutex = Mutex.new
+        @default_route = []
       end
 
       def self.ssl_generate_certificate
@@ -54,45 +57,52 @@ module Msf
         return key, cert, chain
       end
 
-      def create_https_listener(host, port, certificate)
-        forwarder = Msf::Aggregator::HttpsForwarder.new
-        forwarder.log_messages = true
-        server = TCPServer.new(host, port)
-        ssl_context = OpenSSL::SSL::SSLContext.new
-        unless certificate.nil?
-          ssl_context.key, ssl_context.cert = ssl_parse_certificate(certificate)
-        else
-          ssl_context.key, ssl_context.cert = Msf::Aggregator::ConnectionManager.ssl_generate_certificate
-        end
-        ssl_server = OpenSSL::SSL::SSLServer.new(server, ssl_context)
+      def add_cable_https(host, port, certificate)
+        @manager_mutex.synchronize do
+          forwarder = Msf::Aggregator::HttpsForwarder.new
+          rhost, rport = @default_route # TODO: the need for this furthers the idea of a refactor for a routing service
+          unless rhost.nil?
+            forwarder.add_route(rhost, rport, nil)
+          end
+          forwarder.log_messages = true
+          server = TCPServer.new(host, port)
+          ssl_context = OpenSSL::SSL::SSLContext.new
+          unless certificate.nil?
+            ssl_context.key, ssl_context.cert = ssl_parse_certificate(certificate)
+          else
+            ssl_context.key, ssl_context.cert = Msf::Aggregator::ConnectionManager.ssl_generate_certificate
+          end
+          ssl_server = OpenSSL::SSL::SSLServer.new(server, ssl_context)
 
-        Logger.log "Listening on port #{host}:#{port}"
+          Logger.log "Listening on port #{host}:#{port}"
 
-        handler = Thread.new do
-          begin
-            loop do
-              Logger.log "waiting for connection on #{host}:#{port}"
-              connection = ssl_server.accept
-              Logger.log "got connection on #{host}:#{port}"
-              Thread.new do
-                begin
-                  forwarder.forward(connection)
-                rescue
-                  Logger.log $!
+          handler = Thread.new do
+            begin
+              loop do
+                Logger.log "waiting for connection on #{host}:#{port}"
+                connection = ssl_server.accept
+                Logger.log "got connection on #{host}:#{port}"
+                Thread.new do
+                  begin
+                    forwarder.forward(connection)
+                  rescue
+                    Logger.log $!
+                  end
+                  Logger.log "completed connection on #{host}:#{port}"
                 end
-                Logger.log "completed connection on #{host}:#{port}"
               end
             end
           end
-        end
 
-        @cables << Cable.new(handler, server, forwarder)
-        handler
+          @cables << Cable.new(handler, server, forwarder)
+          handler
+        end
       end
 
       def register_forward(rhost, rport, payload_list)
         if payload_list.nil?
           # add the this host and port as the new default route
+          @default_route = [rhost, rport]
           @cables.each do |listener|
               listener.forwarder.add_route(rhost, rport, nil)
           end
@@ -126,24 +136,28 @@ module Msf
       end
 
       def remove_cable(host, port)
-        closed_servers = []
-        @cables.each do |cable|
-          addr = cable.server.local_address
-          if addr.ip_address == host && addr.ip_port == port.to_i
-            # TODO: refactor this to shutdown the thread as well
-            cable.server.close
-            cable.thread.exit
-            closed_servers << cable
+        @manager_mutex.synchronize do
+          closed_servers = []
+          @cables.each do |cable|
+            addr = cable.server.local_address
+            if addr.ip_address == host && addr.ip_port == port.to_i
+              cable.server.close
+              cable.thread.exit
+              closed_servers << cable
+            end
           end
+          @cables -= closed_servers
         end
-        @cables -= closed_servers
         return true
       end
 
+
       def stop
-        @cables.each do |listener|
-          listener.server.close
-          listener.thread.exit
+        @manager_mutex.synchronize do
+          @cables.each do |listener|
+            listener.server.close
+            listener.thread.exit
+          end
         end
       end
 
@@ -153,18 +167,6 @@ module Msf
           listener.forwarder.add_route(nil, nil, payload)
         end
         Logger.log "parking #{payload}"
-      end
-
-      class Cable
-        attr_reader :forwarder
-        attr_reader :server
-        attr_reader :thread
-
-        def initialize(thread, server, forwarder)
-          @thread = thread
-          @forwarder = forwarder
-          @server = server
-        end
       end
 
       private :ssl_parse_certificate

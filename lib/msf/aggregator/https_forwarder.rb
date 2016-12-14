@@ -7,6 +7,7 @@ module Msf
   module Aggregator
 
     class HttpsForwarder < Forwarder
+      CONNECTION_TIMEOUT = 60 # one minute
 
       attr_accessor :log_messages
       attr_accessor :requests
@@ -22,7 +23,8 @@ module Msf
         @log_messages = false
         @forward_routes = {}
         @inbound_connections = []
-        @inbound_uris = []
+        @inbound_uris = {}
+        @forwarder_mutex = Mutex.new
       end
 
       def add_route(rhost, rport, payload)
@@ -46,8 +48,10 @@ module Msf
         @request = ''
         request_lines = get_data(connection, false)
         uri = parse_uri(request_lines[0])
-        unless uri.nil? || @inbound_uris.include?(uri)
-          @inbound_uris << uri
+        @forwarder_mutex.synchronize do
+          unless uri.nil?
+            @inbound_uris[uri] = Time.now
+          end
         end
         host, port = get_forward(uri)
         if host.nil?
@@ -64,7 +68,7 @@ module Msf
           ssl_client.connect
         rescue StandardError => e
           log 'error on console connect ' + e.to_s
-          self.send_parked_response(connection)
+          send_parked_response(connection)
           return
         end
 
@@ -98,6 +102,8 @@ module Msf
       end
 
       def connections
+        # TODO: for now before reporting connections flush stale ones
+        flush_stale_sessions
         connections = {}
         @inbound_uris.each do |connection|
           forward = 'parked'
@@ -148,6 +154,20 @@ module Msf
         end
       end
 
+      def flush_stale_sessions
+        @forwarder_mutex.synchronize do
+          stale_sessions = []
+          @inbound_uris.each_pair do |uri, time|
+            unless (time + CONNECTION_TIMEOUT) > Time.now
+              stale_sessions << uri
+            end
+          end
+          stale_sessions.each do |uri|
+            @inbound_uris.delete(uri)
+          end
+        end
+      end
+
       def parse_uri(http_request)
         parts = http_request.split(/ /)
         uri = nil
@@ -179,6 +199,7 @@ module Msf
         connection.close
       end
 
+      private :send_parked_response
       private :get_data
       private :get_forward
       private :log

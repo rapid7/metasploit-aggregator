@@ -5,6 +5,7 @@ require 'msgpack'
 require 'msgpack/rpc'
 
 require 'msf/aggregator/version'
+require 'msf/aggregator/cable'
 require 'msf/aggregator/connection_manager'
 require 'msf/aggregator/https_forwarder'
 require 'msf/aggregator/logger'
@@ -13,12 +14,17 @@ module Msf
   module Aggregator
 
     class Service
+      # return availability status of the service
+      def available?
+        # index for impl
+      end
+
       # returns map of sessions available from the service
       def sessions
         # index for impl
       end
 
-      def listeners
+      def cables
         # index for impl
       end
 
@@ -37,7 +43,7 @@ module Msf
       # start a listening port maintained on the service
       # connections are forwarded to any registered default
       # TODO: may want to require a type here for future proof of api
-      def add_cable(host, port, certificate)
+      def add_cable(type, host, port, certificate = nil)
         # index for impl
       end
 
@@ -51,7 +57,7 @@ module Msf
 
       # returns list of IP addressed available to the service
       # TODO: consider also reporting "used" ports (may not be needed)
-      def available_ingress
+      def available_addresses
         # index for impl
       end
     end
@@ -66,8 +72,10 @@ module Msf
         @client = MessagePack::RPC::Client.new(@host, @port)
       end
 
-      def start
-        Logger.log 'not implemented'
+      def available?
+        @client.call(:available?)
+      rescue MessagePack::RPC::ConnectionTimeoutError => e
+        false
       end
 
       def sessions
@@ -76,7 +84,7 @@ module Msf
         Logger.log(e.to_s)
       end
 
-      def listeners
+      def cables
         @client.call(:cables)
       rescue MessagePack::RPC::TimeoutError => e
         Logger.log(e.to_s)
@@ -95,8 +103,8 @@ module Msf
         Logger.log(e.to_s)
       end
 
-      def add_cable(host, port, certificate)
-        @client.call(:add_cable, host, port, certificate)
+      def add_cable(type, host, port, certificate = nil)
+        @client.call(:add_cable, type, host, port, certificate)
       rescue MessagePack::RPC::TimeoutError => e
         Logger.log(e.to_s)
       end
@@ -113,7 +121,7 @@ module Msf
         Logger.log(e.to_s)
       end
 
-      def available_ingress
+      def available_addresses
         @client.call(:available_addresses)
       rescue MessagePack::RPC::TimeoutError => e
         Logger.log(e.to_s)
@@ -128,19 +136,16 @@ module Msf
       # include Metasploit::Aggregator::ConnectionManager
 
       def initialize
-        @executor = nil
         @manager = nil
       end
 
       def start
-        @executor = Thread.new do
-          begin
-            @manager = Msf::Aggregator::ConnectionManager.new
-          rescue
-            $stderr.puts $!
-          end
-        end
+        @manager = Msf::Aggregator::ConnectionManager.new
         true
+      end
+
+      def available?
+        !@manager.nil?
       end
 
       def sessions
@@ -162,16 +167,21 @@ module Msf
         @manager.park(payload)
       end
 
-      def add_cable(host, port, certificate)
-        unless @executor.nil?
-          # TODO: check if already listening on that port
-          @manager.create_https_listener(host, port, certificate)
+      def add_cable(type, host, port, certificate = nil)
+        unless @manager.nil?
+          case type
+            when Cable::HTTPS
+              # TODO: check if already listening on that port
+              @manager.add_cable_https(host, port, certificate)
+            else
+              Logger.log("#{type} cables are not supported.")
+          end
         end
         true
       end
 
       def remove_cable(host, port)
-        unless @executor.nil?
+        unless @manager.nil?
           @manager.remove_cable(host, port)
         end
       end
@@ -193,10 +203,10 @@ module Msf
       end
 
       def stop
-        unless @executor.nil?
-          @manager.stop unless @admin_listener.nil?
-          @executor.join
+        unless @manager.nil?
+          @manager.stop
         end
+        @manager = nil
         true
       end
 
@@ -232,6 +242,9 @@ module Msf
       end
 
       def stop
+        c = MessagePack::RPC::Client.new(@host,@port)
+        c.call(:stop)
+        c.close
         @svr.close
       end
     end
