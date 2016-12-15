@@ -161,10 +161,12 @@ module Msf
         # forwarding will cause new session creation on the console
         # TODO: check and set lock on payload requested see note below in register_default
         @manager.register_forward(rhost, rport, [ payload ])
+        true # update later to return if lock obtained
       end
 
       def release_session(payload)
         @manager.park(payload)
+        true # return always return success for now
       end
 
       def add_cable(type, host, port, certificate = nil)
