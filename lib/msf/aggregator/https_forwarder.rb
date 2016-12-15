@@ -105,7 +105,7 @@ module Msf
         # TODO: for now before reporting connections flush stale ones
         flush_stale_sessions
         connections = {}
-        @inbound_uris.each do |connection|
+        @inbound_uris.each_pair do |connection, time|
           forward = 'parked'
           host, port = get_forward(connection)
           unless host.nil?
