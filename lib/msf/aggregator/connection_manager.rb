@@ -14,6 +14,7 @@ module Msf
         @cables = []
         @manager_mutex = Mutex.new
         @default_route = []
+        @router = Router.instance
       end
 
       def self.ssl_generate_certificate
@@ -62,7 +63,7 @@ module Msf
           forwarder = Msf::Aggregator::HttpsForwarder.new
           rhost, rport = @default_route # TODO: the need for this furthers the idea of a refactor for a routing service
           unless rhost.nil?
-            forwarder.add_route(rhost, rport, nil)
+            @router.add_route(rhost, rport, nil)
           end
           forwarder.log_messages = true
           server = TCPServer.new(host, port)
@@ -99,22 +100,13 @@ module Msf
         end
       end
 
-      def register_forward(rhost, rport, payload_list)
+      def register_forward(rhost, rport, payload_list = nil)
         if payload_list.nil?
           # add the this host and port as the new default route
           @default_route = [rhost, rport]
-          @cables.each do |listener|
-              listener.forwarder.add_route(rhost, rport, nil)
-          end
+          @router.add_route(rhost, rport, nil)
         else
-        # TODO: consider refactoring the routing into a routing service loaded into all forwarding classes
-          unless @cables.nil?
-            @cables.each do |listener|
-              payload_list.each do |payload|
-                listener.forwarder.add_route(rhost, rport, payload)
-              end
-            end
-          end
+          @router.add_route(rhost, rport, payload)
         end
       end
 
@@ -162,10 +154,7 @@ module Msf
       end
 
       def park(payload)
-        # all listeners refer to a global parking list for now
-        @cables.each do |listener|
-          listener.forwarder.add_route(nil, nil, payload)
-        end
+        @router.add_route(nil, nil, payload)
         Logger.log "parking #{payload}"
       end
 
