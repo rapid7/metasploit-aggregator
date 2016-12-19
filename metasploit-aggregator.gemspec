@@ -11,7 +11,7 @@ Gem::Specification.new do |spec|
   spec.summary       = "metasploit-aggregator"
   spec.description   = "metasploit-aggregator"
   spec.homepage      = 'https://www.msf.com'
-  spec.license       = 'BSD-3-clause'
+  spec.license       = 'BSD-3-Clause'
 
   # Prevent pushing this gem to RubyGems.org. To allow pushes either set the 'allowed_push_host'
   # to allow pushing to a single host or delete this section to allow pushing to any host.
