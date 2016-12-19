@@ -106,7 +106,9 @@ module Msf
           @default_route = [rhost, rport]
           @router.add_route(rhost, rport, nil)
         else
-          @router.add_route(rhost, rport, payload)
+          payload_list.each do |payload|
+            @router.add_route(rhost, rport, payload)
+          end
         end
       end
 
