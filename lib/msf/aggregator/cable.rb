@@ -2,6 +2,7 @@ module Msf
   module Aggregator
     class Cable
       HTTPS = 'https'
+      HTTP = 'http'
 
       attr_reader :forwarder
       attr_reader :server

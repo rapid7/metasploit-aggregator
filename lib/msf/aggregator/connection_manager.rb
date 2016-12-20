@@ -2,6 +2,7 @@ require 'openssl'
 require 'socket'
 
 require 'msf/aggregator/logger'
+require 'msf/aggregator/http_forwarder'
 require 'msf/aggregator/https_forwarder'
 require 'msf/aggregator/cable'
 
@@ -61,10 +62,6 @@ module Msf
       def add_cable_https(host, port, certificate)
         @manager_mutex.synchronize do
           forwarder = Msf::Aggregator::HttpsForwarder.new
-          rhost, rport = @default_route # TODO: the need for this furthers the idea of a refactor for a routing service
-          unless rhost.nil?
-            @router.add_route(rhost, rport, nil)
-          end
           forwarder.log_messages = true
           server = TCPServer.new(host, port)
           ssl_context = OpenSSL::SSL::SSLContext.new
@@ -75,28 +72,20 @@ module Msf
           end
           ssl_server = OpenSSL::SSL::SSLServer.new(server, ssl_context)
 
-          Logger.log "Listening on port #{host}:#{port}"
-
-          handler = Thread.new do
-            begin
-              loop do
-                Logger.log "waiting for connection on #{host}:#{port}"
-                connection = ssl_server.accept
-                Logger.log "got connection on #{host}:#{port}"
-                Thread.new do
-                  begin
-                    forwarder.forward(connection)
-                  rescue
-                    Logger.log $!
-                  end
-                  Logger.log "completed connection on #{host}:#{port}"
-                end
-              end
-            end
-          end
-
+          handler = connect_cable(ssl_server, host, port, forwarder)
           @cables << Cable.new(handler, server, forwarder)
           handler
+        end
+      end
+
+      def add_cable_http(host, port)
+        @manager_mutex.synchronize do
+          forwarder = Msf::Aggregator::HttpForwarder.new
+          forwarder.log_messages = true
+          server = TCPServer.new(host, port)
+
+          handler = connect_cable(server, host, port, forwarder)
+          @cables << Cable.new(handler, server, forwarder)
         end
       end
 
@@ -127,6 +116,29 @@ module Msf
           local_cables << addr.ip_address + ':' + addr.ip_port.to_s
         end
         local_cables
+      end
+
+      def connect_cable(server, host, port, forwarder)
+        Logger.log "Listening on port #{host}:#{port}"
+
+        handler = Thread.new do
+          begin
+            loop do
+              Logger.log "waiting for connection on #{host}:#{port}"
+              connection = server.accept
+              Logger.log "got connection on #{host}:#{port}"
+              Thread.new do
+                begin
+                  forwarder.forward(connection)
+                rescue
+                  Logger.log $!
+                end
+                Logger.log "completed connection on #{host}:#{port}"
+              end
+            end
+          end
+        end
+        handler
       end
 
       def remove_cable(host, port)

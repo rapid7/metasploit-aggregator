@@ -175,6 +175,8 @@ module Msf
             when Cable::HTTPS
               # TODO: check if already listening on that port
               @manager.add_cable_https(host, port, certificate)
+            when Cable::HTTP
+              @manager.add_cable_http(host, port)
             else
               Logger.log("#{type} cables are not supported.")
           end
