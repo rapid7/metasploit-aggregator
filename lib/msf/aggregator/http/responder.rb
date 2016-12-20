@@ -38,7 +38,7 @@ module Msf
               client = nil
 
               begin
-                client = getConnection(host, port)
+                client = get_connection(host, port)
               rescue StandardError => e
                 log 'error on console connect ' + e.to_s
                 send_parked_response(connection)
@@ -85,7 +85,7 @@ module Msf
         end
 
         def send_parked_response(connection)
-          log "sending parked response to #{connection.io.peeraddr[3]}"
+          log "sending parked response to #{peer_address(connection)}"
           parked_message = []
           parked_message << 'HTTP/1.1 200 OK'
           parked_message << 'Content-Type: application/octet-stream'
@@ -129,12 +129,16 @@ module Msf
           Request.new request_lines, body, connection
         end
 
-        def getConnection(host, port)
+        def get_connection(host, port)
           TCPSocket.new host, port
         end
 
         def close_connection(connection)
           connection.close
+        end
+
+        def peer_address(connection)
+          connection.peeraddr[3]
         end
 
         def log(message)

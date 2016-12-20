@@ -9,7 +9,7 @@ module Msf
           super
         end
 
-        def getConnection(host, port)
+        def get_connection(host, port)
           ssl_client = nil
           begin
             tcp_client = TCPSocket.new host, port
@@ -27,6 +27,10 @@ module Msf
         def close_connection(connection)
           connection.sync_close = true
           connection.close
+        end
+
+        def peer_address(connection)
+          connection.io.peeraddr[3]
         end
       end
     end

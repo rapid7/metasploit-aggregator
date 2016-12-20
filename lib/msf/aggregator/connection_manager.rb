@@ -90,6 +90,12 @@ module Msf
       end
 
       def register_forward(rhost, rport, payload_list = nil)
+        @cables.each do |cable|
+          addr = cable.server.local_address
+          if addr.ip_address == rhost && addr.ip_port == rport.to_i
+            raise ArgumentError.new("#{rhost}:#{rport} is not a valid forward")
+          end
+        end
         if payload_list.nil?
           # add the this host and port as the new default route
           @default_route = [rhost, rport]
