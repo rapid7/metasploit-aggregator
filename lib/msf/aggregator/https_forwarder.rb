@@ -1,107 +1,53 @@
 require 'socket'
 require 'openssl'
-require 'msf/aggregator/logger'
 require 'msf/aggregator/forwarder'
+require 'msf/aggregator/logger'
+require 'msf/aggregator/router'
 
 module Msf
   module Aggregator
 
     class HttpsForwarder < Forwarder
+      CONNECTION_TIMEOUT = 60 # one minute
 
       attr_accessor :log_messages
-      attr_accessor :requests
-      attr_accessor :responses
+      attr_reader :response_queues
 
       def initialize
-        @ssl = true
-        @ssl_version = 'TLS1'
-        @requests = []
-        @responses = []
-        @request = ''
-        @response = ''
         @log_messages = false
-        @forward_routes = {}
-        @inbound_connections = []
-        @inbound_uris = []
-      end
-
-      def add_route(rhost, rport, payload)
-        forward = [rhost, rport]
-        if payload.nil?
-          @forward_routes['default'] = forward
-          return
-        end
-        @forward_routes[payload] = forward
+        @response_queues = {}
+        @responding_threads = {}
+        @forwarder_mutex = Mutex.new
+        @router = Router.instance
       end
 
       def forward(connection)
-        tcp_client = ssl_client = nil
-        peer_addr = connection.io.peeraddr[3]
-        unless @inbound_connections.include? peer_addr
-          @inbound_connections << peer_addr
-        end
-
         #forward input requests
-        # TODO: add uri routing selection here
-        @request = ''
-        request_lines = get_data(connection, false)
+        request_lines = URIResponder.get_data(connection, false)
         uri = parse_uri(request_lines[0])
-        unless uri.nil? || @inbound_uris.include?(uri)
-          @inbound_uris << uri
-        end
-        host, port = get_forward(uri)
-        if host.nil?
-          # when not forward found park the connection for now
-          # in the future this may get smarter and return a 404 or something
-          return send_parked_response(connection)
-        end
-
-        begin
-          tcp_client = TCPSocket.new host, port
-          ssl_context = OpenSSL::SSL::SSLContext.new
-          ssl_context.ssl_version = :TLSv1
-          ssl_client = OpenSSL::SSL::SSLSocket.new tcp_client, ssl_context
-          ssl_client.connect
-        rescue StandardError => e
-          log 'error on console connect ' + e.to_s
-          self.send_parked_response(connection)
-          return
-        end
-
-        log 'connected to console'
-
-        Thread.new do
-          begin
-            @response = ''
-            request_lines = get_data(ssl_client, true)
-            request_lines.each do |line|
-              connection.puts line
-              @response += line
+        @forwarder_mutex.synchronize do
+          unless uri.nil?
+            unless @response_queues[uri]
+              uri_responder = URIResponder.new(uri)
+              uri_responder.log_messages = @log_messages
+              @response_queues[uri] = uri_responder
             end
-          rescue
-            log $!
+            @response_queues[uri].queue << Request.new(request_lines, connection)
+            @response_queues[uri].time = Time.now
+          else
+            connection.sync_close = true
+            connection.close
           end
-          log "From console: \n" + @response
-          @responses << @response if @log_messages
-          ssl_client.sync_close = true
-          ssl_client.close
-          connection.sync_close = true
-          connection.close
         end
-
-        request_lines.each do |line|
-          ssl_client.puts line
-          @request += line
-        end
-        log "From victim: \n" + @request
-        @requests << @request if log_messages
       end
 
       def connections
+        # TODO: for now before reporting connections flush stale ones
+        flush_stale_sessions
         connections = {}
-        @inbound_uris.each do |connection|
+        @response_queues.each_pair do |connection, queue|
           forward = 'parked'
-          host, port = get_forward(connection)
+          host, port = @router.get_forward(connection)
           unless host.nil?
             forward = "#{host}:#{port}"
           end
@@ -110,41 +56,18 @@ module Msf
         connections
       end
 
-      def get_data(connection, guaranteed_length)
-        checked_first = has_length = guaranteed_length
-        content_length = 0
-        request_lines = []
-
-        while (input = connection.gets)
-          request_lines << input
-          # break for body read
-          break if (input.inspect.gsub /^"|"$/, '').eql? '\r\n'
-
-          if !checked_first && !has_length
-            has_length = input.include?('POST')
-            checked_first = true
+      def flush_stale_sessions
+        @forwarder_mutex.synchronize do
+          stale_sessions = []
+          @response_queues.each_pair do |uri, queue|
+            unless (queue.time + CONNECTION_TIMEOUT) > Time.now
+              stale_sessions << uri
+            end
           end
-
-          if has_length && input.include?('Content-Length')
-            content_length = input[(input.index(':') + 1)..input.length].to_i
+          stale_sessions.each do |uri|
+            @response_queues[uri].stop_processing
+            @response_queues.delete(uri)
           end
-
-        end
-        body = ''
-        if has_length
-          while body.length < content_length
-            body += connection.read(content_length - body.length)
-          end
-          request_lines << body
-        end
-        request_lines
-      end
-
-      def get_forward(uri)
-        unless @forward_routes[uri].nil?
-          @forward_routes[uri]
-        else
-          @forward_routes['default']
         end
       end
 
@@ -158,30 +81,149 @@ module Msf
         uri
       end
 
-      def log(message)
-        Logger.log message if @log_messages
-      end
+      class URIResponder
+        attr_accessor :queue
+        attr_accessor :time
+        attr_accessor :log_messages
+        attr_reader :uri
 
-      def send_parked_response(connection)
-        log "sending parked response to #{connection.io.peeraddr[3]}"
-        parked_message = []
-        parked_message << 'HTTP/1.1 200 OK'
-        parked_message << 'Content-Type: application/octet-stream'
-        parked_message << 'Connection: close'
-        parked_message << 'Server: Apache'
-        parked_message << 'Content-Length: 0'
-        parked_message << ' '
-        parked_message << ' '
-        parked_message.each do |line|
-          connection.puts line
+        def initialize(uri)
+          @uri = uri
+          @queue = Queue.new
+          @thread = Thread.new { process_requests }
+          @time = Time.now
+          @router = Router.instance
         end
-        connection.sync_close = true
-        connection.close
+
+        def process_requests
+
+          while true do
+            begin
+              request_task = @queue.pop
+              connection = request_task.socket
+              request_lines = request_task.request
+
+              # peer_addr = connection.io.peeraddr[3]
+
+              host, port = @router.get_forward(@uri)
+              if host.nil?
+                # when no forward found park the connection for now
+                # in the future this may get smarter and return a 404 or something
+                return send_parked_response(connection)
+              end
+
+              tcp_client = ssl_client = nil
+
+              begin
+                tcp_client = TCPSocket.new host, port
+                ssl_context = OpenSSL::SSL::SSLContext.new
+                ssl_context.ssl_version = :TLSv1
+                ssl_client = OpenSSL::SSL::SSLSocket.new tcp_client, ssl_context
+                ssl_client.connect
+              rescue StandardError => e
+                log 'error on console connect ' + e.to_s
+                send_parked_response(connection)
+                return
+              end
+
+              log 'connected to console'
+
+              request_lines.each do |line|
+                ssl_client.write line
+              end
+              # log "From victim: \n" + request_lines.join()
+
+              begin
+                response = ''
+                request_lines = URIResponder.get_data(ssl_client, true)
+                request_lines.each do |line|
+                  connection.write line
+                  response += line
+                end
+                # log "From console: \n" + response
+              rescue
+                log $!
+              end
+              ssl_client.sync_close = true
+              ssl_client.close
+              connection.sync_close = true
+              connection.close
+            rescue Exception => e
+              log e.to_s
+            end
+          end
+
+        end
+
+        def stop_processing
+          @thread.exit
+        end
+
+        def send_parked_response(connection)
+          log "sending parked response to #{connection.io.peeraddr[3]}"
+          parked_message = []
+          parked_message << 'HTTP/1.1 200 OK'
+          parked_message << 'Content-Type: application/octet-stream'
+          parked_message << 'Connection: close'
+          parked_message << 'Server: Apache'
+          parked_message << 'Content-Length: 0'
+          parked_message << ' '
+          parked_message << ' '
+          parked_message.each do |line|
+            connection.puts line
+          end
+          connection.sync_close = true
+          connection.close
+        end
+
+        def self.get_data(connection, guaranteed_length)
+          checked_first = has_length = guaranteed_length
+          content_length = 0
+          request_lines = []
+
+          while (input = connection.gets)
+            request_lines << input
+            # break for body read
+            break if (input.inspect.gsub /^"|"$/, '').eql? '\r\n'
+
+            if !checked_first && !has_length
+              has_length = input.include?('POST')
+              checked_first = true
+            end
+
+            if has_length && input.include?('Content-Length')
+              content_length = input[(input.index(':') + 1)..input.length].to_i
+            end
+
+          end
+          body = ''
+          if has_length
+            while body.length < content_length
+              body += connection.read(content_length - body.length)
+            end
+            request_lines << body
+          end
+          request_lines
+        end
+
+        def log(message)
+          Logger.log message if @log_messages
+        end
+
+        private :log
+        private :send_parked_response
       end
 
-      private :get_data
-      private :get_forward
-      private :log
+      class Request
+        attr_reader :request
+        attr_reader :socket
+
+        def initialize(request, socket)
+          @request = request
+          @socket = socket
+        end
+      end
+
     end
   end
 end

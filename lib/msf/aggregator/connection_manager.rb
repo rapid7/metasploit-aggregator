@@ -3,19 +3,18 @@ require 'socket'
 
 require 'msf/aggregator/logger'
 require 'msf/aggregator/https_forwarder'
+require 'msf/aggregator/cable'
 
 module Msf
   module Aggregator
 
     class ConnectionManager
-      attr_reader :listening_servers
 
       def initialize
-        @listening_ports = []
-        @listening_threads = []
-        @listening_servers = []
-        @parked_hosts = []
-        @forwarders = []
+        @cables = []
+        @manager_mutex = Mutex.new
+        @default_route = []
+        @router = Router.instance
       end
 
       def self.ssl_generate_certificate
@@ -45,156 +44,120 @@ module Msf
       end
 
       def ssl_parse_certificate(certificate)
+        key, cert, chain = nil
         unless certificate.nil?
-          # parse the cert
-          Logger.log("not implemented")
-        end
-      end
-
-      # def create_admin_listener(host, port)
-      #   admin = Thread.new {
-      #     begin
-      #       @listening_ports << port
-      #       listeningPort = port
-      #
-      #       server = TCPServer.new(host, listeningPort)
-      #       @listening_servers << server
-      #       sslContext = OpenSSL::SSL::SSLContext.new
-      #       sslContext.key, sslContext.cert = Msf::Aggregator::ConnectionManager.ssl_generate_certificate
-      #       sslServer = OpenSSL::SSL::SSLServer.new(server, sslContext)
-      #
-      #       Logger.log "Listening on port #{host}:#{listeningPort}"
-      #
-      #       loop do
-      #         connection = sslServer.accept
-      #         Thread.new do
-      #           begin
-      #             # register console request path
-      #             input = MessagePack::Unpacker.new(connection)
-      #             input.each do |obj|
-      #               process_request(obj)
-      #             end
-      #           rescue
-      #             Logger.log $!
-      #           end
-      #         }
-      #
-      #         Thread.new {
-      #           begin
-      #             # register console response path
-      #             @output = MessagePack::Packer.new(connection)
-      #           rescue
-      #             Logger.log $!
-      #           end
-      #         }
-      #
-      #       end
-      #     end
-      #
-      #     def process_request(data)
-      #       # This processor relies on the expectation that all data objects extend Type Msf::Aggregator::Message
-      #       # starting with getting session list from the aggregator
-      #       sessions = Msf::Aggregator::Admin::Sessions.new(@listening_servers, data.id)
-      #
-      #       @output.write(sessions)
-      #
-      #       # assume data is a request for a new default listener for now
-      #       # NOTE: this currently uses message to define forward source, may be important to validate
-      #       # the forward address is owned by the original command client channel console before registering
-      #       # forwarder = Metasploit::Aggregator::MessageForwarder.new(data.lhost, data.lport, data.uri)
-      #       # proxy_handlers.create_https_listener(data.host, data.port, forwarder)
-      #     end
-      #
-      #     private :process_request
-      #   end
-      #   @listening_threads << admin
-      #   admin
-      # end
-
-      def create_https_listener(host, port, certificate)
-        forwarder = Msf::Aggregator::HttpsForwarder.new
-        forwarder.log_messages = true
-        handler = Thread.new do
           begin
-            @listening_ports << port
-            listening_port = port
-
-            server = TCPServer.new(host, listening_port)
-            @listening_servers << server
-            ssl_context = OpenSSL::SSL::SSLContext.new
-            # ssl_context.key, ssl_context.cert = parse_certificate(certificate)
-            # if certificate.nil?
-              ssl_context.key, ssl_context.cert = Msf::Aggregator::ConnectionManager.ssl_generate_certificate
-            # end
-            ssl_server = OpenSSL::SSL::SSLServer.new(server, ssl_context)
-
-            Logger.log "Listening on port #{host}:#{listening_port}"
-
-            loop do
-              Logger.log "waiting for connection on #{host}:#{port}"
-              connection = ssl_server.accept
-              Logger.log "got connection on #{host}:#{port}"
-              Thread.new {
-                begin
-                  if @parked_hosts.include? connection.io.peeraddr[3]
-                    forwarder.send_parked_response(connection)
-                    break
-                  end
-                  forwarder.forward(connection)
-                rescue
-                  Logger.log $!
-                end
-                Logger.log "completed connection on #{host}:#{port}"
-              }
-            end
+            # parse the cert
+            key = OpenSSL::PKey::RSA.new(certificate, "")
+            cert = OpenSSL::X509::Certificate.new(certificate)
+            # TODO: ensure this parses all certificate in object provided
+          rescue OpenSSL::PKey::RSAError => e
+            Logger.log(e.message)
           end
         end
-        @listening_threads << handler
-        @forwarders << forwarder
-        handler
+        return key, cert, chain
       end
 
-      def register_forward(rhost, rport, payload_list)
-        if payload_list.nil?
-          @forwarders.each do |forwarder|
-              forwarder.add_route(rhost, rport, nil)
+      def add_cable_https(host, port, certificate)
+        @manager_mutex.synchronize do
+          forwarder = Msf::Aggregator::HttpsForwarder.new
+          rhost, rport = @default_route # TODO: the need for this furthers the idea of a refactor for a routing service
+          unless rhost.nil?
+            @router.add_route(rhost, rport, nil)
           end
-        else
-        # TODO: consider refactoring the routing into a routing service loaded into all forwarding classes
-          unless @forwarders.nil?
-            @forwarders.each do |forwarder|
-              payload_list.each do |payload|
-                forwarder.add_route(rhost, rport, payload)
+          forwarder.log_messages = true
+          server = TCPServer.new(host, port)
+          ssl_context = OpenSSL::SSL::SSLContext.new
+          unless certificate.nil?
+            ssl_context.key, ssl_context.cert = ssl_parse_certificate(certificate)
+          else
+            ssl_context.key, ssl_context.cert = Msf::Aggregator::ConnectionManager.ssl_generate_certificate
+          end
+          ssl_server = OpenSSL::SSL::SSLServer.new(server, ssl_context)
+
+          Logger.log "Listening on port #{host}:#{port}"
+
+          handler = Thread.new do
+            begin
+              loop do
+                Logger.log "waiting for connection on #{host}:#{port}"
+                connection = ssl_server.accept
+                Logger.log "got connection on #{host}:#{port}"
+                Thread.new do
+                  begin
+                    forwarder.forward(connection)
+                  rescue
+                    Logger.log $!
+                  end
+                  Logger.log "completed connection on #{host}:#{port}"
+                end
               end
             end
+          end
+
+          @cables << Cable.new(handler, server, forwarder)
+          handler
+        end
+      end
+
+      def register_forward(rhost, rport, payload_list = nil)
+        if payload_list.nil?
+          # add the this host and port as the new default route
+          @default_route = [rhost, rport]
+          @router.add_route(rhost, rport, nil)
+        else
+          payload_list.each do |payload|
+            @router.add_route(rhost, rport, payload)
           end
         end
       end
 
       def connections
         connections = {}
-        @forwarders.each do |forwarder|
-          connections = connections.merge forwarder.connections
+        @cables.each do |cable|
+          connections = connections.merge cable.forwarder.connections
         end
         connections
       end
 
-      def stop
-        @listening_threads.each do |thread|
-          thread.exit
+      def cables
+        local_cables = []
+        @cables.each do |cable|
+          addr = cable.server.local_address
+          local_cables << addr.ip_address + ':' + addr.ip_port.to_s
         end
-        @listening_servers.each do |server|
-          server.close
+        local_cables
+      end
+
+      def remove_cable(host, port)
+        @manager_mutex.synchronize do
+          closed_servers = []
+          @cables.each do |cable|
+            addr = cable.server.local_address
+            if addr.ip_address == host && addr.ip_port == port.to_i
+              cable.server.close
+              cable.thread.exit
+              closed_servers << cable
+            end
+          end
+          @cables -= closed_servers
+        end
+        return true
+      end
+
+
+      def stop
+        @manager_mutex.synchronize do
+          @cables.each do |listener|
+            listener.server.close
+            listener.thread.exit
+          end
         end
       end
 
-      def park(host)
-        # all listeners refer to a global parking list for now
-        @parked_hosts << host
-        @forwarders.each do |forwarder|
-          forwarder.add_route(nil, nil, host)
-        end
-        Logger.log "parking #{host}"
+      def park(payload)
+        @router.add_route(nil, nil, payload)
+        Logger.log "parking #{payload}"
       end
 
       private :ssl_parse_certificate
