@@ -32,7 +32,8 @@ module Msf
               if host.nil?
                 # when no forward found park the connection for now
                 # in the future this may get smarter and return a 404 or something
-                return send_parked_response(connection)
+                send_parked_response(connection)
+                next
               end
 
               client = nil
