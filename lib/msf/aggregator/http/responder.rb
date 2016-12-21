@@ -42,7 +42,7 @@ module Msf
               rescue StandardError => e
                 log 'error on console connect ' + e.to_s
                 send_parked_response(connection)
-                return
+                next
               end
 
               log 'connected to console'
@@ -85,7 +85,8 @@ module Msf
         end
 
         def send_parked_response(connection)
-          log "sending parked response to #{peer_address(connection)}"
+          address = connection.peeraddr[3]
+          log "sending parked response to #{address}"
           parked_message = []
           parked_message << 'HTTP/1.1 200 OK'
           parked_message << 'Content-Type: application/octet-stream'
@@ -135,10 +136,6 @@ module Msf
 
         def close_connection(connection)
           connection.close
-        end
-
-        def peer_address(connection)
-          connection.peeraddr[3]
         end
 
         def log(message)

@@ -10,27 +10,17 @@ module Msf
         end
 
         def get_connection(host, port)
-          ssl_client = nil
-          begin
-            tcp_client = TCPSocket.new host, port
-            ssl_context = OpenSSL::SSL::SSLContext.new
-            ssl_context.ssl_version = :TLSv1
-            ssl_client = OpenSSL::SSL::SSLSocket.new tcp_client, ssl_context
-            ssl_client.connect
-          rescue StandardError => e
-            log 'error on console connect ' + e.to_s
-            send_parked_response(connection)
-          end
+          tcp_client = TCPSocket.new host, port
+          ssl_context = OpenSSL::SSL::SSLContext.new
+          ssl_context.ssl_version = :TLSv1
+          ssl_client = OpenSSL::SSL::SSLSocket.new tcp_client, ssl_context
+          ssl_client.connect
           ssl_client
         end
 
         def close_connection(connection)
           connection.sync_close = true
           connection.close
-        end
-
-        def peer_address(connection)
-          connection.io.peeraddr[3]
         end
       end
     end
