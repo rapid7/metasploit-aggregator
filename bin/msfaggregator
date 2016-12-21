@@ -3,6 +3,7 @@
 require 'bundler/setup'
 require 'msf/aggregator'
 require 'msf/aggregator/cable'
+require 'msf/aggregator/logger'
 
 admin_host = '127.0.0.1'
 admin_port = 2447
@@ -15,21 +16,17 @@ cert_string = nil
 # server = Msf::Aggregator::Server.new('127.0.0.1', 1337)
 server = Msf::Aggregator::MsgPackServer.new(admin_host, admin_port)
 server.start
-
-client = Msf::Aggregator::ServerProxy.new(admin_host, admin_port)
-client.add_cable(Msf::Aggregator::Cable::HTTPS, listener, 8443, cert_string)
-client.register_default(remote_console, 5000, nil)
-client.stop
+Logger.log "Starting administration service on #{admin_host}:#{admin_port}"
 
 loop do
   command = $stdin.gets
   if command.chomp == 'exit'
-      exit
+    exit
   elsif command.chomp == 'clear'
     forwarder.requests = []
     forwarder.responses = []
   elsif command.chomp == 'pause'
-    $stderr.puts "paused"
+    Logger.log "paused"
   elsif command.chomp == 'start'
     server.start
   elsif command.chomp == 'stop'
