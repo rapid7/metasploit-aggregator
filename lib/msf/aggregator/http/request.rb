@@ -22,6 +22,31 @@ module Msf
           end
           uri
         end
+
+        def to_msgpack
+          MessagePack.dump ({
+              :headers => headers,
+              :body => body
+          })
+        end
+
+        def self.from_msgpack(string)
+          data = MessagePack.load string
+          self.new(data['headers'], data['body'].force_encoding(Encoding::ASCII_8BIT), nil)
+        end
+
+        # provide a default response in Request form
+        def self.parked()
+          parked_message = []
+          parked_message << 'HTTP/1.1 200 OK'
+          parked_message << 'Content-Type: application/octet-stream'
+          parked_message << 'Connection: close'
+          parked_message << 'Server: Apache'
+          parked_message << 'Content-Length: 0'
+          parked_message << ' '
+          parked_message << ' '
+          self.new(parked_message, '', nil)
+        end
       end
     end
   end

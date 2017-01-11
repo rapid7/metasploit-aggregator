@@ -3,6 +3,9 @@ require "msf/aggregator/http/request"
 module Msf
   module Aggregator
     module Http
+      # a Responder acts a a gateway to convert data from a port to into a Request object
+      # used in the aggregator. It also reverses this process as a gateway for sending Request object
+      # back as responses to the original Request.
       class Responder
 
         attr_accessor :queue
@@ -16,6 +19,7 @@ module Msf
           @thread = Thread.new { process_requests }
           @time = Time.now
           @router = Router.instance
+          @pending_requests = nil
         end
 
         def process_requests
@@ -26,53 +30,35 @@ module Msf
               connection = request_task.socket
               request_task.headers
 
-              # peer_addr = connection.io.peeraddr[3]
-
-              host, port = @router.get_forward(@uri)
-              if host.nil?
+              send, recv = @router.get_forward(@uri)
+              if send.nil?
                 # when no forward found park the connection for now
                 # in the future this may get smarter and return a 404 or something
                 send_parked_response(connection)
                 next
               end
 
-              client = nil
+              # response from get_forward will be a queue to push messages onto and a response queue to retrieve result from
+              send << request_task
+              @pending_request = connection
 
+              log 'queued to console'
+
+              # now get the response once available and send back using this connection
               begin
-                client = get_connection(host, port)
-              rescue StandardError => e
-                log 'error on console connect ' + e.to_s
-                send_parked_response(connection)
-                next
-              end
-
-              log 'connected to console'
-
-              request_task.headers.each do |line|
-                client.write line
-              end
-              unless request_task.body.nil?
-                client.write request_task.body
-              end
-              client.flush
-              # log "From victim: \n" + request_lines.join()
-
-              begin
-                response = ''
-                request_obj = Responder.get_data(client, true)
+                request_obj = recv.pop
+                @pending_request = nil
                 request_obj.headers.each do |line|
                   connection.write line
-                  response += line
                 end
                 unless request_obj.body.nil?
                   connection.write request_obj.body
                 end
                 connection.flush
-                  # log "From console: \n" + response
+                log 'message delivered from console'
               rescue
                 log $!
               end
-              close_connection(client)
               close_connection(connection)
             rescue Exception => e
               log "an error occurred processing request from #{@uri}"
@@ -83,20 +69,16 @@ module Msf
 
         def stop_processing
           @thread.exit
+          if @pending_request
+            send_parked_response(@pending_request)
+            close_connection(@pending_request)
+          end
         end
 
         def send_parked_response(connection)
           address = connection.peeraddr[3]
           log "sending parked response to #{address}"
-          parked_message = []
-          parked_message << 'HTTP/1.1 200 OK'
-          parked_message << 'Content-Type: application/octet-stream'
-          parked_message << 'Connection: close'
-          parked_message << 'Server: Apache'
-          parked_message << 'Content-Length: 0'
-          parked_message << ' '
-          parked_message << ' '
-          parked_message.each do |line|
+          Msf::Aggregator::Http::Request.parked.headers.each do |line|
             connection.puts line
           end
           close_connection(connection)

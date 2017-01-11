@@ -3,11 +3,13 @@ require 'openssl'
 require 'thread'
 require 'msgpack'
 require 'msgpack/rpc'
+require 'securerandom'
 
 require 'msf/aggregator/version'
 require 'msf/aggregator/cable'
 require 'msf/aggregator/connection_manager'
 require 'msf/aggregator/https_forwarder'
+require 'msf/aggregator/http'
 require 'msf/aggregator/logger'
 
 module Msf
@@ -31,7 +33,7 @@ module Msf
       # sets forwarding for a specific session to promote
       # that session for local use, obtained sessions are
       # not reported in getSessions
-      def obtain_session(payload, lhost, lport)
+      def obtain_session(payload, uuid)
         # index for impl
       end
 
@@ -51,7 +53,7 @@ module Msf
         # index for impl
       end
 
-      def register_default(lhost, lport, payload_list)
+      def register_default(uuid, payload_list)
         # index for impl
       end
 
@@ -60,9 +62,15 @@ module Msf
       def available_addresses
         # index for impl
       end
+
+      # register the object to pass request from cables to
+      def register_response_channel(requester)
+
+      end
     end
 
     class ServerProxy < Service
+      attr_reader :uuid
       @host = @port = @socket = nil
       @response_queue = []
 
@@ -70,6 +78,7 @@ module Msf
         @host = host
         @port = port
         @client = MessagePack::RPC::Client.new(@host, @port)
+        @uuid = SecureRandom.uuid
       end
 
       def available?
@@ -91,8 +100,8 @@ module Msf
       end
 
 
-      def obtain_session(payload, lhost, lport)
-        @client.call(:obtain_session, payload, lhost, lport)
+      def obtain_session(payload, uuid)
+        @client.call(:obtain_session, payload, uuid)
       rescue MessagePack::RPC::TimeoutError => e
         Logger.log(e.to_s)
       end
@@ -115,8 +124,8 @@ module Msf
         Logger.log(e.to_s)
       end
 
-      def register_default(lhost, lport, payload_list)
-        @client.call(:register_default, lhost, lport, payload_list)
+      def register_default(uuid, payload_list)
+        @client.call(:register_default, uuid, payload_list)
       rescue MessagePack::RPC::TimeoutError => e
         Logger.log(e.to_s)
       end
@@ -129,6 +138,39 @@ module Msf
 
       def stop
         @client.close
+        @client = nil
+        @listening_thread.join if @listening_thread
+      end
+
+      def register_response_channel(requester)
+        unless requester.kind_of? Msf::Aggregator::Http::Requester
+          raise ArgumentError("response channel class invalid")
+        end
+        @response_io = requester
+        start_responding
+      end
+
+      def start_responding
+        @listening_thread = Thread.new do
+          @listener_client = MessagePack::RPC::Client.new(@host, @port) unless @listener_client
+          while @client
+            begin
+              sleep 0.1 # polling for now need
+              result, result_obj, session_id, response_obj = nil
+              result = @listener_client.call(:request, @uuid)
+              next unless result # just continue to poll if no request is found
+              result_obj = Msf::Aggregator::Http::Request.from_msgpack(result)
+              session_id = Msf::Aggregator::Http::Request.parse_uri(result_obj)
+              response_obj = @response_io.process_request(result_obj)
+              @listener_client.call(:respond, session_id, response_obj.to_msgpack)
+            rescue MessagePack::RPC::TimeoutError
+              next
+            rescue
+              Logger.log $!
+            end
+          end
+          @listener_client.close
+        end
       end
     end # ServerProxy
 
@@ -137,6 +179,7 @@ module Msf
 
       def initialize
         @manager = nil
+        @router = Router.instance
       end
 
       def start
@@ -156,11 +199,11 @@ module Msf
         @manager.cables
       end
 
-      def obtain_session(payload, rhost, rport)
+      def obtain_session(payload, uuid)
         # return session object details or UUID/uri
         # forwarding will cause new session creation on the console
         # TODO: check and set lock on payload requested see note below in register_default
-        @manager.register_forward(rhost, rport, [ payload ])
+        @manager.register_forward(uuid, [ payload ])
         true # update later to return if lock obtained
       end
 
@@ -190,10 +233,10 @@ module Msf
         end
       end
 
-      def register_default(lhost, lport, payload_list)
+      def register_default(uuid, payload_list)
         # add this payload list to each forwarder for this remote console
         # TODO: consider adding boolean param to ConnectionManager.register_forward to 'lock'
-        @manager.register_forward(lhost, lport, payload_list)
+        @manager.register_forward(uuid, payload_list)
         true
       end
 
@@ -217,7 +260,63 @@ module Msf
       def release_session(host)
         @manager.park(host)
       end
+
+      def request(uuid)
+        # return requests here
+        result = nil
+        send, recv = @router.reverse_route(uuid)
+        if send.length > 0
+          result = send.pop
+        end
+        result
+      end
+
+      def respond(uuid, data)
+        send, recv = @router.get_forward(uuid)
+        recv << data unless recv.nil?
+        true
+      end
+
+      def register_response_channel(io)
+        # not implemented "client only method"
+        response = "register_response_channel not implemented on server"
+        Logger.log response
+        response
+      end
     end # class Server
+
+    # wrapping class required to avoid MsgPack specific needs to parallel request processing.
+    class AsyncMsgPackServer < Server
+
+      def initialize
+        super
+      end
+
+      # MsgPack specific wrapper for listener due to lack of parallel processing
+      def request(uuid)
+        result = super(uuid)
+        sendMsg = nil
+        if result
+          begin
+            sendMsg = result.to_msgpack
+          rescue Exception => e
+            Logger.log e.backtrace
+            # when an error occurs here we should likely respond with an error of some sort to remove block on response
+          end
+        end
+        sendMsg
+      end
+
+      # MsgPack specific wrapper for listener due to lack of parallel processing
+      def respond(uuid, data)
+        begin
+          result = super(uuid, Msf::Aggregator::Http::Request.from_msgpack(data))
+          result
+        rescue Exception => e
+          Logger.log e.backtrace
+        end
+      end
+    end # AsyncMsgPackServer
 
     class MsgPackServer
 
@@ -232,7 +331,7 @@ module Msf
         #
         @svr = MessagePack::RPC::Server.new # need to initialize this as ssl server
         # @svr.listen(sslServer, Server.new)
-        @svr.listen(@host, @port, Server.new)
+        @svr.listen(@host, @port, AsyncMsgPackServer.new)
 
         Thread.new { @svr.run }
       end
