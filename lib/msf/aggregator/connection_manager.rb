@@ -14,7 +14,6 @@ module Msf
       def initialize
         @cables = []
         @manager_mutex = Mutex.new
-        @default_route = []
         @router = Router.instance
       end
 

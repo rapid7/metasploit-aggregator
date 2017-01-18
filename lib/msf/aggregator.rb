@@ -57,6 +57,10 @@ module Msf
         # index for impl
       end
 
+      def default
+        # index for impl
+      end
+
       # returns list of IP addressed available to the service
       # TODO: consider also reporting "used" ports (may not be needed)
       def available_addresses
@@ -126,6 +130,12 @@ module Msf
 
       def register_default(uuid, payload_list)
         @client.call(:register_default, uuid, payload_list)
+      rescue MessagePack::RPC::TimeoutError => e
+        Logger.log(e.to_s)
+      end
+
+      def default
+        @client.call(:default)
       rescue MessagePack::RPC::TimeoutError => e
         Logger.log(e.to_s)
       end
@@ -238,6 +248,11 @@ module Msf
         # TODO: consider adding boolean param to ConnectionManager.register_forward to 'lock'
         @manager.register_forward(uuid, payload_list)
         true
+      end
+
+      def default
+        send, recv, console = @router.get_forward('default')
+        console
       end
 
       def available_addresses
