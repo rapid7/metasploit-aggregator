@@ -1,4 +1,4 @@
-module Msf
+module Metasploit
   module Aggregator
     module Http
       class Request

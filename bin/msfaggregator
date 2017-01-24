@@ -1,9 +1,9 @@
 #!/usr/bin/env ruby
 
 require 'bundler/setup'
-require 'msf/aggregator'
-require 'msf/aggregator/cable'
-require 'msf/aggregator/logger'
+require 'metasploit/aggregator'
+require 'metasploit/aggregator/cable'
+require 'metasploit/aggregator/logger'
 
 admin_host = '127.0.0.1'
 admin_port = 2447
@@ -13,8 +13,8 @@ remote_console = '127.0.0.1'
 # cert_string = File.new(cert_file).read
 cert_string = nil
 
-# server = Msf::Aggregator::Server.new('127.0.0.1', 1337)
-server = Msf::Aggregator::MsgPackServer.new(admin_host, admin_port)
+# server = Metasploit::Aggregator::Server.new('127.0.0.1', 1337)
+server = Metasploit::Aggregator::MsgPackServer.new(admin_host, admin_port)
 server.start
 Logger.log "Starting administration service on #{admin_host}:#{admin_port}"
 

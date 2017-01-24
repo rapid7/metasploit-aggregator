@@ -1,4 +1,4 @@
-module Msf
+module Metasploit
   module Aggregator
     class Forwarder
       CONNECTION_TIMEOUT = 60 # one minute

@@ -1,4 +1,4 @@
-module Msf
+module Metasploit
   module Aggregator
     VERSION = '0.1.1'
   end

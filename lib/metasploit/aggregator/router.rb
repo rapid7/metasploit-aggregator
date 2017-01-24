@@ -1,6 +1,6 @@
 require 'singleton'
 
-module Msf
+module Metasploit
   module Aggregator
     class Router
       include Singleton

@@ -1,15 +1,15 @@
 require 'spec_helper'
 
-describe Msf::Aggregator do
+describe Metasploit::Aggregator do
   it "has a version number" do
-    expect(Msf::Aggregator::VERSION).not_to be nil
+    expect(Metasploit::Aggregator::VERSION).not_to be nil
   end
 
   it "provides all classes for interaction" do
-    is_expected.to satisfy { defined? Msf::Aggregator::Service }
-    is_expected.to satisfy { defined? Msf::Aggregator::Server }
-    is_expected.to satisfy { defined? Msf::Aggregator::ServerProxy }
-    is_expected.to satisfy { defined? Msf::Aggregator::MsgPackServer }
+    is_expected.to satisfy { defined? Metasploit::Aggregator::Service }
+    is_expected.to satisfy { defined? Metasploit::Aggregator::Server }
+    is_expected.to satisfy { defined? Metasploit::Aggregator::ServerProxy }
+    is_expected.to satisfy { defined? Metasploit::Aggregator::MsgPackServer }
   end
 
   describe "MsgPackServer" do
@@ -17,7 +17,7 @@ describe Msf::Aggregator do
     context "a MsgPackServer is created" do
       context "given the localhost ip '127.0.0.1' and port '2447'" do
         subject do
-          Msf::Aggregator::MsgPackServer.new('127.0.0.1', 2447)
+          Metasploit::Aggregator::MsgPackServer.new('127.0.0.1', 2447)
         end
 
         after do
@@ -32,7 +32,7 @@ describe Msf::Aggregator do
 
   describe "Service" do
     subject do
-      Msf::Aggregator::Service.new
+      Metasploit::Aggregator::Service.new
     end
 
     it { is_expected.to respond_to(:available?) }
@@ -48,10 +48,10 @@ describe Msf::Aggregator do
 
   describe "Server" do
     subject do
-      Msf::Aggregator::Server.new
+      Metasploit::Aggregator::Server.new
     end
 
-    it { is_expected.to be_a Msf::Aggregator::Service }
+    it { is_expected.to be_a Metasploit::Aggregator::Service }
     it { is_expected.to respond_to(:available?) }
     it { is_expected.to respond_to(:sessions) }
     it { is_expected.to respond_to(:obtain_session) }
@@ -68,10 +68,10 @@ describe Msf::Aggregator do
       context "given the localhost ip '127.0.0.1' and port '2447'" do
 
         subject do
-          Msf::Aggregator::ServerProxy.new('127.0.0.1', 2447)
+          Metasploit::Aggregator::ServerProxy.new('127.0.0.1', 2447)
         end
 
-        it { is_expected.to be_a Msf::Aggregator::Service }
+        it { is_expected.to be_a Metasploit::Aggregator::Service }
         it { is_expected.to respond_to(:available?) }
         it { is_expected.to respond_to(:sessions) }
         it { is_expected.to respond_to(:obtain_session) }

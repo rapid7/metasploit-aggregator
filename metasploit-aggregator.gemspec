@@ -1,11 +1,11 @@
 # coding: utf-8
 lib = File.expand_path('../lib', __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
-require 'msf/aggregator/version'
+require 'metasploit/aggregator/version'
 
 Gem::Specification.new do |spec|
   spec.name          = "metasploit-aggregator"
-  spec.version       = Msf::Aggregator::VERSION
+  spec.version       = Metasploit::Aggregator::VERSION
   spec.authors       = ['Metasploit Hackers']
   spec.email         = ['metasploit-hackers@lists.sourceforge.net']
   spec.summary       = "metasploit-aggregator"

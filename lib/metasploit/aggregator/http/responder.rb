@@ -1,6 +1,6 @@
-require "msf/aggregator/http/request"
+require "metasploit/aggregator/http/request"
 
-module Msf
+module Metasploit
   module Aggregator
     module Http
       # a Responder acts a a gateway to convert data from a port to into a Request object
@@ -78,7 +78,7 @@ module Msf
         def send_parked_response(connection)
           address = connection.peeraddr[3]
           log "sending parked response to #{address}"
-          Msf::Aggregator::Http::Request.parked.headers.each do |line|
+          Metasploit::Aggregator::Http::Request.parked.headers.each do |line|
             connection.puts line
           end
           close_connection(connection)

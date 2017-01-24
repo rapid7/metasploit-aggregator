@@ -1,12 +1,12 @@
 require 'openssl'
 require 'socket'
 
-require 'msf/aggregator/logger'
-require 'msf/aggregator/http_forwarder'
-require 'msf/aggregator/https_forwarder'
-require 'msf/aggregator/cable'
+require 'metasploit/aggregator/logger'
+require 'metasploit/aggregator/http_forwarder'
+require 'metasploit/aggregator/https_forwarder'
+require 'metasploit/aggregator/cable'
 
-module Msf
+module Metasploit
   module Aggregator
 
     class ConnectionManager
@@ -60,14 +60,14 @@ module Msf
 
       def add_cable_https(host, port, certificate)
         @manager_mutex.synchronize do
-          forwarder = Msf::Aggregator::HttpsForwarder.new
+          forwarder = Metasploit::Aggregator::HttpsForwarder.new
           forwarder.log_messages = true
           server = TCPServer.new(host, port)
           ssl_context = OpenSSL::SSL::SSLContext.new
           unless certificate.nil?
             ssl_context.key, ssl_context.cert = ssl_parse_certificate(certificate)
           else
-            ssl_context.key, ssl_context.cert = Msf::Aggregator::ConnectionManager.ssl_generate_certificate
+            ssl_context.key, ssl_context.cert = Metasploit::Aggregator::ConnectionManager.ssl_generate_certificate
           end
           ssl_server = OpenSSL::SSL::SSLServer.new(server, ssl_context)
 
@@ -79,7 +79,7 @@ module Msf
 
       def add_cable_http(host, port)
         @manager_mutex.synchronize do
-          forwarder = Msf::Aggregator::HttpForwarder.new
+          forwarder = Metasploit::Aggregator::HttpForwarder.new
           forwarder.log_messages = true
           server = TCPServer.new(host, port)
 

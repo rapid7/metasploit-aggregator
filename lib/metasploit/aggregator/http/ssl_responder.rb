@@ -1,7 +1,7 @@
-require "msf/aggregator/http/request"
-require "msf/aggregator/http/responder"
+require "metasploit/aggregator/http/request"
+require "metasploit/aggregator/http/responder"
 
-module Msf
+module Metasploit
   module Aggregator
     module Http
       class SslResponder < Responder

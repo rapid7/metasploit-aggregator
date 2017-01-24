@@ -1,6 +1,6 @@
-require "msf/aggregator/http/requester"
+require "metasploit/aggregator/http/requester"
 
-module Msf
+module Metasploit
   module Aggregator
     module Http
       class SslRequester < Requester

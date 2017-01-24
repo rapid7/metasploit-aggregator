@@ -1,7 +1,7 @@
-require "msf/aggregator/http/request"
-require "msf/aggregator/http/responder"
+require "metasploit/aggregator/http/request"
+require "metasploit/aggregator/http/responder"
 
-module Msf
+module Metasploit
   module Aggregator
     module Http
       # a Requester takes in Request object and to send to a known port and protocol
@@ -15,7 +15,7 @@ module Msf
         def process_request(request)
           socket = get_connection(@host, @port)
           write_request(socket, request)
-          response_obj = Msf::Aggregator::Http::Responder.get_data(socket, true)
+          response_obj = Metasploit::Aggregator::Http::Responder.get_data(socket, true)
           close_connection(socket)
           response_obj
         end

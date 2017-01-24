@@ -5,14 +5,14 @@ require 'msgpack'
 require 'msgpack/rpc'
 require 'securerandom'
 
-require 'msf/aggregator/version'
-require 'msf/aggregator/cable'
-require 'msf/aggregator/connection_manager'
-require 'msf/aggregator/https_forwarder'
-require 'msf/aggregator/http'
-require 'msf/aggregator/logger'
+require 'metasploit/aggregator/version'
+require 'metasploit/aggregator/cable'
+require 'metasploit/aggregator/connection_manager'
+require 'metasploit/aggregator/https_forwarder'
+require 'metasploit/aggregator/http'
+require 'metasploit/aggregator/logger'
 
-module Msf
+module Metasploit
   module Aggregator
 
     class Service
@@ -153,7 +153,7 @@ module Msf
       end
 
       def register_response_channel(requester)
-        unless requester.kind_of? Msf::Aggregator::Http::Requester
+        unless requester.kind_of? Metasploit::Aggregator::Http::Requester
           raise ArgumentError("response channel class invalid")
         end
         @response_io = requester
@@ -169,8 +169,8 @@ module Msf
               result, result_obj, session_id, response_obj = nil
               result = @listener_client.call(:request, @uuid)
               next unless result # just continue to poll if no request is found
-              result_obj = Msf::Aggregator::Http::Request.from_msgpack(result)
-              session_id = Msf::Aggregator::Http::Request.parse_uri(result_obj)
+              result_obj = Metasploit::Aggregator::Http::Request.from_msgpack(result)
+              session_id = Metasploit::Aggregator::Http::Request.parse_uri(result_obj)
               response_obj = @response_io.process_request(result_obj)
               @listener_client.call(:respond, session_id, response_obj.to_msgpack)
             rescue MessagePack::RPC::TimeoutError
@@ -193,7 +193,7 @@ module Msf
       end
 
       def start
-        @manager = Msf::Aggregator::ConnectionManager.new
+        @manager = Metasploit::Aggregator::ConnectionManager.new
         true
       end
 
@@ -325,7 +325,7 @@ module Msf
       # MsgPack specific wrapper for listener due to lack of parallel processing
       def respond(uuid, data)
         begin
-          result = super(uuid, Msf::Aggregator::Http::Request.from_msgpack(data))
+          result = super(uuid, Metasploit::Aggregator::Http::Request.from_msgpack(data))
           result
         rescue Exception => e
           Logger.log e.backtrace
@@ -341,7 +341,7 @@ module Msf
 
         # server = TCPServer.new(@host, @port)
         # sslContext = OpenSSL::SSL::SSLContext.new
-        # sslContext.key, sslContext.cert = Msf::Aggregator::ConnectionManager.ssl_generate_certificate
+        # sslContext.key, sslContext.cert = Metasploit::Aggregator::ConnectionManager.ssl_generate_certificate
         # sslServer = OpenSSL::SSL::SSLServer.new(server, sslContext)
         #
         @svr = MessagePack::RPC::Server.new # need to initialize this as ssl server
