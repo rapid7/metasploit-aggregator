@@ -1,12 +1,12 @@
 require 'openssl'
 require 'socket'
 
-require 'msf/aggregator/logger'
-require 'msf/aggregator/http_forwarder'
-require 'msf/aggregator/https_forwarder'
-require 'msf/aggregator/cable'
+require 'metasploit/aggregator/logger'
+require 'metasploit/aggregator/http_forwarder'
+require 'metasploit/aggregator/https_forwarder'
+require 'metasploit/aggregator/cable'
 
-module Msf
+module Metasploit
   module Aggregator
 
     class ConnectionManager
@@ -14,7 +14,6 @@ module Msf
       def initialize
         @cables = []
         @manager_mutex = Mutex.new
-        @default_route = []
         @router = Router.instance
       end
 
@@ -61,14 +60,14 @@ module Msf
 
       def add_cable_https(host, port, certificate)
         @manager_mutex.synchronize do
-          forwarder = Msf::Aggregator::HttpsForwarder.new
+          forwarder = Metasploit::Aggregator::HttpsForwarder.new
           forwarder.log_messages = true
           server = TCPServer.new(host, port)
           ssl_context = OpenSSL::SSL::SSLContext.new
           unless certificate.nil?
             ssl_context.key, ssl_context.cert = ssl_parse_certificate(certificate)
           else
-            ssl_context.key, ssl_context.cert = Msf::Aggregator::ConnectionManager.ssl_generate_certificate
+            ssl_context.key, ssl_context.cert = Metasploit::Aggregator::ConnectionManager.ssl_generate_certificate
           end
           ssl_server = OpenSSL::SSL::SSLServer.new(server, ssl_context)
 
@@ -80,7 +79,7 @@ module Msf
 
       def add_cable_http(host, port)
         @manager_mutex.synchronize do
-          forwarder = Msf::Aggregator::HttpForwarder.new
+          forwarder = Metasploit::Aggregator::HttpForwarder.new
           forwarder.log_messages = true
           server = TCPServer.new(host, port)
 
@@ -89,20 +88,12 @@ module Msf
         end
       end
 
-      def register_forward(rhost, rport, payload_list = nil)
-        @cables.each do |cable|
-          addr = cable.server.local_address
-          if addr.ip_address == rhost && addr.ip_port == rport.to_i
-            raise ArgumentError.new("#{rhost}:#{rport} is not a valid forward")
-          end
-        end
+      def register_forward(uuid, payload_list = nil)
         if payload_list.nil?
-          # add the this host and port as the new default route
-          @default_route = [rhost, rport]
-          @router.add_route(rhost, rport, nil)
+          @router.add_route(uuid, nil)
         else
           payload_list.each do |payload|
-            @router.add_route(rhost, rport, payload)
+            @router.add_route(uuid, payload)
           end
         end
       end
@@ -174,7 +165,7 @@ module Msf
       end
 
       def park(payload)
-        @router.add_route(nil, nil, payload)
+        @router.add_route(nil, payload)
         Logger.log "parking #{payload}"
       end
 

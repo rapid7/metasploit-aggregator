@@ -1,11 +1,11 @@
 require 'socket'
-require 'msf/aggregator/forwarder'
-require 'msf/aggregator/http/request'
-require 'msf/aggregator/http/responder'
-require 'msf/aggregator/logger'
-require 'msf/aggregator/router'
+require 'metasploit/aggregator/forwarder'
+require 'metasploit/aggregator/http/request'
+require 'metasploit/aggregator/http/responder'
+require 'metasploit/aggregator/logger'
+require 'metasploit/aggregator/router'
 
-module Msf
+module Metasploit
   module Aggregator
     class HttpForwarder < Forwarder
       CONNECTION_TIMEOUT = 60 # one minute
@@ -19,12 +19,12 @@ module Msf
 
       def forward(connection)
         #forward input requests
-        request_obj = Msf::Aggregator::Http::Responder.get_data(connection, false)
-        uri = Msf::Aggregator::Http::Request.parse_uri(request_obj)
+        request_obj = Metasploit::Aggregator::Http::Responder.get_data(connection, false)
+        uri = Metasploit::Aggregator::Http::Request.parse_uri(request_obj)
         @forwarder_mutex.synchronize do
           unless uri.nil?
             unless @response_queues[uri]
-              uri_responder = Msf::Aggregator::Http::Responder.new(uri)
+              uri_responder = Metasploit::Aggregator::Http::Responder.new(uri)
               uri_responder.log_messages = @log_messages
               @response_queues[uri] = uri_responder
             end
