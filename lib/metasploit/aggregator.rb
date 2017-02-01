@@ -42,6 +42,11 @@ module Metasploit
         # index for impl
       end
 
+      # return any extended details for the payload requested
+      def session_details(payload)
+
+      end
+
       # start a listening port maintained on the service
       # connections are forwarded to any registered default
       # TODO: may want to require a type here for future proof of api
@@ -112,6 +117,12 @@ module Metasploit
 
       def release_session(payload)
         @client.call(:release_session, payload)
+      rescue MessagePack::RPC::TimeoutError => e
+        Logger.log(e.to_s)
+      end
+
+      def session_details(payload)
+        @client.call(:session_details, payload)
       rescue MessagePack::RPC::TimeoutError => e
         Logger.log(e.to_s)
       end
@@ -222,6 +233,10 @@ module Metasploit
         true # return always return success for now
       end
 
+      def session_details(payload)
+        @manager.connection_details(payload)
+      end
+
       def add_cable(type, host, port, certificate = nil)
         unless @manager.nil?
           case type
@@ -270,10 +285,6 @@ module Metasploit
         end
         @manager = nil
         true
-      end
-
-      def release_session(host)
-        @manager.park(host)
       end
 
       def request(uuid)

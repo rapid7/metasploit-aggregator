@@ -33,5 +33,16 @@ loop do
     server.stop
   elsif command.chomp == 'park'
     client.release_session($stdin.gets.chomp)
+  elsif command.chomp == 'details'
+    client = Metasploit::Aggregator::ServerProxy.new(admin_host, admin_port)
+    client.sessions.each_pair do |payload, console|
+      details = client.session_details(payload)
+      $stdout.puts payload
+      details.each_pair do |key, attr|
+        $stdout.print "\t"
+        $stdout.print "#{key}:"
+        $stdout.puts "#{attr}"
+      end
+    end
   end
 end

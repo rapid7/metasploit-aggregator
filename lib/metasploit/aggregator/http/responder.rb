@@ -1,3 +1,4 @@
+require "metasploit/aggregator/session_detail_service"
 require "metasploit/aggregator/http/request"
 
 module Metasploit
@@ -19,6 +20,7 @@ module Metasploit
           @thread = Thread.new { process_requests }
           @time = Time.now
           @router = Router.instance
+          @session_service = SessionDetailService.instance
           @pending_requests = nil
         end
 
@@ -39,6 +41,7 @@ module Metasploit
               end
 
               # response from get_forward will be a queue to push messages onto and a response queue to retrieve result from
+              @session_service.add_request(request_task, @uri)
               send << request_task
               @pending_request = connection
 
@@ -47,6 +50,7 @@ module Metasploit
               # now get the response once available and send back using this connection
               begin
                 request_obj = recv.pop
+                @session_service.add_request(request_task, @uri)
                 @pending_request = nil
                 request_obj.headers.each do |line|
                   connection.write line

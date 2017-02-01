@@ -33,16 +33,22 @@ module Metasploit
         connections
       end
 
+      def connection_info(connection)
+        info = {}
+        info['TIME'] = @response_queues[connection].time unless @response_queues[connection].nil?
+        info
+      end
+
       def flush_stale_sessions
         @forwarder_mutex.synchronize do
           stale_sessions = []
-          @response_queues.each_pair do |uri, queue|
+          @response_queues.each_pair do |payload, queue|
             unless (queue.time + CONNECTION_TIMEOUT) > Time.now
-              stale_sessions << uri
+              stale_sessions << payload
             end
           end
-          stale_sessions.each do |uri|
-            stale_queue = @response_queues.delete(uri)
+          stale_sessions.each do |payload|
+            stale_queue = @response_queues.delete(payload)
             stale_queue.stop_processing unless stale_queue.nil?
           end
         end

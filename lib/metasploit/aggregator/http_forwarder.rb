@@ -10,9 +10,6 @@ module Metasploit
     class HttpForwarder < Forwarder
       CONNECTION_TIMEOUT = 60 # one minute
 
-      attr_accessor :log_messages
-      attr_reader :response_queues
-
       def initialize
         super
       end

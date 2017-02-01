@@ -15,6 +15,7 @@ module Metasploit
         @cables = []
         @manager_mutex = Mutex.new
         @router = Router.instance
+        @details_cache = SessionDetailService.instance
       end
 
       def self.ssl_generate_certificate
@@ -104,6 +105,23 @@ module Metasploit
           connections = connections.merge cable.forwarder.connections
         end
         connections
+      end
+
+      def connection_details(payload)
+        detail_map = {}
+        details = @details_cache.session_details(payload)
+        unless details.nil?
+          details.each_pair do |key, value|
+            detail_map[key] = value.to_s
+            end
+        end
+        @cables.each do |cable|
+          next unless cable.forwarder.connections.include?(payload)
+          # TODO: improve how time is exposed for live connections
+          time = cable.forwarder.connection_info(payload)['TIME']
+          detail_map['LAST_SEEN'] = Time.now - time unless time.nil?
+        end
+        detail_map
       end
 
       def cables

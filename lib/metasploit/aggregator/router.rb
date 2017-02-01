@@ -31,9 +31,9 @@ module Metasploit
         end
       end
 
-      def get_forward(uri)
-        unless @forward_routes[uri].nil?
-          @forward_routes[uri]
+      def get_forward(payload)
+        unless @forward_routes[payload].nil?
+          @forward_routes[payload]
         else
           @forward_routes['default']
         end
