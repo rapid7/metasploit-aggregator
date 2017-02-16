@@ -1,4 +1,5 @@
 require 'openssl'
+require 'singleton'
 require 'socket'
 
 require 'metasploit/aggregator/logger'
@@ -10,6 +11,7 @@ module Metasploit
   module Aggregator
 
     class ConnectionManager
+      include Singleton
 
       def initialize
         @cables = []
@@ -119,7 +121,7 @@ module Metasploit
           next unless cable.forwarder.connections.include?(payload)
           # TODO: improve how time is exposed for live connections
           time = cable.forwarder.connection_info(payload)['TIME']
-          detail_map['LAST_SEEN'] = Time.now - time unless time.nil?
+          detail_map['LAST_SEEN'] = (Time.now - time).to_s unless time.nil?
         end
         detail_map
       end

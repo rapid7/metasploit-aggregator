@@ -19,11 +19,13 @@ Gem::Specification.new do |spec|
   spec.bindir        = "bin"
   spec.executables << 'metasploit-aggregator'
   spec.require_paths = ["lib"]
+  spec.platform      = Gem::Platform::RUBY
 
   spec.add_development_dependency "bundler", "~> 1.13"
+  spec.add_development_dependency "pry"
   spec.add_development_dependency "rake", "~> 10.0"
   spec.add_development_dependency "rspec", "~> 3.0"
-  spec.add_runtime_dependency 'msgpack'
-  spec.add_runtime_dependency 'msgpack-rpc'
+  spec.add_development_dependency "grpc-tools"
+  spec.add_runtime_dependency 'grpc'
   spec.add_runtime_dependency 'rex-arch'
 end

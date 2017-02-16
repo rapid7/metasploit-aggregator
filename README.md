@@ -25,4 +25,6 @@ Contributing
 --
 [Contributing](https://github.com/rapid7/metasploit-aggregator/blob/master/CONTRIBUTING.md).
 
+Expanding protobuf service use
+```grpc_tools_ruby_protoc -I ../protos --ruby_out=lib --grpc_out=lib ../protos/metasploit/aggregator/*```
 
