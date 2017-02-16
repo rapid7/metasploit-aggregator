@@ -3,6 +3,7 @@ require 'openssl'
 require 'thread'
 require 'securerandom'
 
+require 'metasploit/aggregator/error'
 require 'metasploit/aggregator/messages_pb'
 require 'metasploit/aggregator/aggregator_services_pb'
 require 'metasploit/aggregator/version'
@@ -19,6 +20,11 @@ module Metasploit
       # return availability status of the service
       def available?
         # index for impl
+      end
+
+      # return the current service version found
+      def version
+        Metasploit::Aggregator::VERSION
       end
 
       # returns map of sessions available from the service
@@ -91,9 +97,11 @@ module Metasploit
         @host = host
         @port = port
         @client = Metasploit::Aggregator::Pb::Stub.new("#{@host}:#{@port}", :this_channel_is_insecure)
-        # add arg{ :channel_override => Core::Channel } to control connection
+        # TODO: add arg{ :channel_override => Core::Channel } to control connection
         @uuid = SecureRandom.uuid
         @no_params = Metasploit::Aggregator::Message::No_params.new
+        server_version = pb_to_array(@client.version(@no_params).value)[0]
+        raise CompatibilityError("server version mis-match found #{server_version}") unless server_version == version
       end
 
       def available?
@@ -273,6 +281,10 @@ module Metasploit
 
       def available(_no_params, _unused_call)
         Metasploit::Aggregator::Message::Result.new( answer: @local_server.available? )
+      end
+
+      def version(_no_params, _unused_call)
+        Metasploit::Aggregator::Message::String_array.new( value: [ @local_server.version ] )
       end
 
       def sessions(_no_parms, _unused_call)

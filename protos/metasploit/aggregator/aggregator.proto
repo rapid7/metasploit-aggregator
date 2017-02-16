@@ -7,6 +7,8 @@ package metasploit.aggregator;
 service Pb {
   rpc available(metasploit.aggregator.message.No_params) returns (metasploit.aggregator.message.Result);
 
+  rpc version(metasploit.aggregator.message.No_params) returns (metasploit.aggregator.message.String_array);
+
   rpc sessions(metasploit.aggregator.message.No_params) returns (metasploit.aggregator.message.Result_map);
 
   rpc cables(metasploit.aggregator.message.No_params) returns (metasploit.aggregator.message.String_array);

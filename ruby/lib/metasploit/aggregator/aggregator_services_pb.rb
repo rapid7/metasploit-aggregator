@@ -16,6 +16,7 @@ module Metasploit
         self.service_name = 'metasploit.aggregator.Pb'
 
         rpc :available, Message::No_params, Message::Result
+        rpc :version, Message::No_params, Message::String_array
         rpc :sessions, Message::No_params, Message::Result_map
         rpc :cables, Message::No_params, Message::String_array
         rpc :obtain_session, Message::String_array, Message::Result

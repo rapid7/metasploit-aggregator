@@ -21,7 +21,7 @@ module Metasploit
           @time = Time.now
           @router = Router.instance
           @session_service = SessionDetailService.instance
-          @pending_requests = nil
+          @pending_request = nil
         end
 
         def process_requests
