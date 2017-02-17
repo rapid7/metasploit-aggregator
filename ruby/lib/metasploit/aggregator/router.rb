@@ -60,7 +60,6 @@ module Metasploit
             @queue_by_uuid[uuid] << request.pop
           end
         end
-        [] unless @queue_by_uuid[uuid].length > 0
         [@queue_by_uuid[uuid], nil, uuid]
       end
     end
