@@ -100,8 +100,8 @@ module Metasploit
         # TODO: add arg{ :channel_override => Core::Channel } to control connection
         @uuid = SecureRandom.uuid
         @no_params = Metasploit::Aggregator::Message::No_params.new
-        server_version = pb_to_array(@client.version(@no_params).value)[0]
-        raise CompatibilityError("server version mis-match found #{server_version}") unless server_version == version
+        # server_version = pb_to_array(@client.version(@no_params).value)[0]
+        # raise CompatibilityError("server version mis-match found #{server_version}") unless server_version == version
       end
 
       def available?
