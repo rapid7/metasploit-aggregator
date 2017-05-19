@@ -51,7 +51,7 @@ module Metasploit
         unless certificate.nil?
           begin
             # parse the cert
-            key = OpenSSL::PKey::RSA.new(certificate, "")
+            key = OpenSSL::PKey::RSA.new(certificate)
             cert = OpenSSL::X509::Certificate.new(certificate)
             # TODO: ensure this parses all certificate in object provided
           rescue OpenSSL::PKey::RSAError => e
