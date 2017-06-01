@@ -1,7 +1,7 @@
 Metasploit [![Build Status](https://travis-ci.org/rapid7/metasploit-aggregator.svg?branch=master)](https://travis-ci.org/rapid7/metasploit-aggregator) [![Code Climate](https://img.shields.io/codeclimate/github/rapid7/metasploit-aggregator.svg)](https://codeclimate.com/github/rapid7/metasploit-aggregator)
 ==
-The Metasploit Aggregator is released under a BSD-style license. See
-LICENSE for more details.
+The Metasploit Aggregator is released under a BSD-style license. [See
+LICENSE](https://github.com/rapid7/metasploit-aggregator/blob/master/LICENSE) for more details.
 
 Bug tracking and development information can be found at:
  https://github.com/rapid7/metasploit-aggregator
