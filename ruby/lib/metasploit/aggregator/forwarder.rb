@@ -22,9 +22,9 @@ module Metasploit
         # TODO: for now before reporting connections flush stale ones
         flush_stale_sessions
         connections = {}
-        @response_queues.each_pair do |connection, queue|
+        @response_queues.each_pair do |connection, _queue|
           forward = 'parked'
-          send, recv, console = @router.get_forward(connection)
+          _send, _recv, console = @router.get_forward(connection)
           unless console.nil?
             forward = "#{console}"
           end

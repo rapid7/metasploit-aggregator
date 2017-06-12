@@ -348,7 +348,9 @@ module Metasploit
         requestingThread = Thread.new do
           loop do
             sleep 0.1 # outer loop only occurs until uuid is set
-            next if uuid.nil?
+            break unless uuid.nil?
+          end
+          while true
             request = @local_server.request(uuid)
             # TODO: with this in place we can just get the request queue and pop each item to process and forward
             unless request.nil?

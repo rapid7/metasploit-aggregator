@@ -53,8 +53,8 @@ module Metasploit
         unless @queue_by_uuid[uuid]
           @queue_by_uuid[uuid] = Queue.new
         end
-        @forward_routes.each_pair do |key, val|
-          request, response, remote_uuid = val
+        @forward_routes.each_pair do |_key, val|
+          request, _response, remote_uuid = val
           next unless remote_uuid == uuid
           while !request.empty?
             @queue_by_uuid[uuid] << request.pop
