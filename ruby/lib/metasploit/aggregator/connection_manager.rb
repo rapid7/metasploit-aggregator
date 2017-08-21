@@ -18,6 +18,7 @@ module Metasploit
         @manager_mutex = Mutex.new
         @router = Router.instance
         @details_cache = SessionDetailService.instance
+        @connection_cleaner = Thread.new { flush_connections }
       end
 
       def self.ssl_generate_certificate
@@ -182,11 +183,22 @@ module Metasploit
             listener.thread.exit
           end
         end
+        @connection_cleaner.exit
       end
 
       def park(payload)
         @router.add_route(nil, payload)
         Logger.log "parking #{payload}"
+      end
+
+      def flush_connections
+        while true
+          @cables.each do |cable|
+            # this relies on a side effect that accessing clears stale connections
+            cable.forwarder.connections.length
+          end
+          sleep 10
+        end
       end
 
       private :ssl_parse_certificate
