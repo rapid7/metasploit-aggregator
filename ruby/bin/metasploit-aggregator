@@ -27,7 +27,7 @@ loop do
   elsif command.chomp == 'details'
     client = Metasploit::Aggregator::ServerProxy.new(admin_host, admin_port)
     sessions = client.sessions
-    sessions.each_pair do |payload, console|
+    sessions.each_pair do |payload, _console|
       details = client.session_details(payload)
       $stdout.puts payload
       details.each_pair do |key, attr|
