@@ -40,6 +40,12 @@ module Metasploit
                 next
               end
 
+              if is_core_negotiate_tlv_encryption(request_task)
+                send_response(create_negative_response(request_task), connection)
+                log 'suppressed core_negotiate_tlv_encryption'
+                next
+              end
+
               # response from get_forward will be a queue to push messages onto and a response queue to retrieve result from
               @session_service.add_request(request_task, @uri)
               send << request_task
@@ -48,24 +54,14 @@ module Metasploit
               log 'queued to console'
 
               # now get the response once available and send back using this connection
-              begin
-                request_obj = recv.pop
-                @session_service.add_request(request_task, @uri)
-                @pending_request = nil
-                request_obj.headers.each do |line|
-                  connection.write line
-                end
-                unless request_obj.body.nil?
-                  connection.write request_obj.body
-                end
-                connection.flush
-                log 'message delivered from console'
-              rescue
-                log $!
-              end
-              close_connection(connection)
+              request_obj = recv.pop
+              @session_service.add_request(request_task, @uri)
+              send_response(request_obj, connection)
+              log 'message delivered from console'
             rescue Exception => e
               log "an error occurred processing request from #{@uri}"
+            ensure
+              close_connection(connection)
             end
           end
 
@@ -82,10 +78,26 @@ module Metasploit
         def send_parked_response(connection)
           address = connection.peeraddr[3]
           log "sending parked response to #{address}"
-          Metasploit::Aggregator::Http::Request.parked.headers.each do |line|
-            connection.puts line
+          send_response(Metasploit::Aggregator::Http::Request.parked, connection)
+        end
+
+        def send_response(request_obj, connection)
+          @pending_request = nil
+          request_obj.headers.each do |line|
+            connection.write line
           end
-          close_connection(connection)
+          unless request_obj.body.nil?
+            connection.write request_obj.body
+          end
+          connection.flush
+        end
+
+        def create_negative_response(request_task)
+          Metasploit::Aggregator::Http::Request.new request_task.headers, request_task.body, request_task.socket
+        end
+
+        def is_core_negotiate_tlv_encryption(request_task)
+          false
         end
 
         def self.get_data(connection, guaranteed_length)
@@ -114,7 +126,7 @@ module Metasploit
               body += connection.read(content_length - body.length)
             end
           end
-          Request.new request_lines, body, connection
+          Metasploit::Aggregator::Http::Request.new request_lines, body, connection
         end
 
         def get_connection(host, port)

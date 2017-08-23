@@ -25,15 +25,24 @@ module Metasploit
 
         # provide a default response in Request form
         def self.parked()
-          parked_message = []
-          parked_message << 'HTTP/1.1 200 OK'
-          parked_message << 'Content-Type: application/octet-stream'
-          parked_message << 'Connection: close'
-          parked_message << 'Server: Apache'
-          parked_message << 'Content-Length: 0'
-          parked_message << ' '
-          parked_message << ' '
-          self.new(parked_message, '', nil)
+          generate_response(nil)
+        end
+
+        def self.generate_response(http_request)
+          socket = nil
+          body = ''
+          unless http_request.nil? || http_request.body.nil?
+            body = http_request.body
+          end
+          message_headers = []
+          message_headers << 'HTTP/1.1 200 OK'
+          message_headers << 'Content-Type: application/octet-stream'
+          message_headers << 'Connection: close'
+          message_headers << 'Server: Apache'
+          message_headers << 'Content-Length: ' + body.length.to_s
+          message_headers << ' '
+          message_headers << ' '
+          self.new(message_headers, body, socket)
         end
       end
     end

@@ -39,8 +39,10 @@ module Metasploit
             if request.body && request.body.length > 0
               # process body as tlv
               @w.write(request.body)
+              @w.flush()
               packet = @parser.recv(@r)
-              next unless packet
+              next unless packet && packet.kind_of?(Metasploit::Aggregator::Tlv::GroupTlv)
+              packet.from_r
               unless @detail_cache[payload]
                 @detail_cache[payload] = { 'ID' => (@payloads_count += 1) }
               end
@@ -49,7 +51,12 @@ module Metasploit
                 @detail_cache[payload]['UUID'] = Metasploit::Aggregator::Tlv::UUID.new(args)
               end
               if packet.has_tlv?(Metasploit::Aggregator::Tlv::TLV_TYPE_MACHINE_ID)
-                @detail_cache[payload]['MachineID'] = Digest::MD5.hexdigest(packet.get_tlv_value(Metasploit::Aggregator::Tlv::TLV_TYPE_MACHINE_ID).downcase.strip)
+                machine_id = packet.get_tlv_value(Metasploit::Aggregator::Tlv::TLV_TYPE_MACHINE_ID)
+                @detail_cache[payload]['MachineID'] = Digest::MD5.hexdigest(machine_id.downcase.strip)
+                _user, computer_name = machine_id.split(":")
+                unless computer_name.nil?
+                  @detail_cache[payload]['HOSTNAME'] = computer_name
+                end
               end
               if packet.has_tlv?(Metasploit::Aggregator::Tlv::TLV_TYPE_USER_NAME)
                 @detail_cache[payload]['USER'] = packet.get_tlv_value(Metasploit::Aggregator::Tlv::TLV_TYPE_USER_NAME)
@@ -62,7 +69,7 @@ module Metasploit
               end
             end
           rescue
-            Logger.log $!
+            Logger.log $!.backtrace
           end
         end
       end
