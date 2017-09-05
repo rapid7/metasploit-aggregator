@@ -105,7 +105,11 @@ module Metasploit
       end
 
       def available?
-        @client.available(@no_params).answer
+        begin
+          @client.available(@no_params).answer
+        rescue GRPC::Unavailable
+          false # unavailable if client throws exception.
+        end
       end
 
       def sessions
