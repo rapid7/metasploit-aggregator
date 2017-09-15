@@ -361,6 +361,7 @@ module Metasploit
           while true
             request = @local_server.request(uuid)
             # TODO: with this in place we can just get the request queue and pop each item to process and forward
+            sleep 0.1
             unless request.nil?
               body = ""
               body = request.body unless request.body.nil?
