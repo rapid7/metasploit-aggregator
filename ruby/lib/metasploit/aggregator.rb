@@ -240,13 +240,17 @@ module Metasploit
         @response_queue.push(initial_response)
 
         @listening_thread = Thread.new do
-          requests.each do |pb_request|
-            request = Metasploit::Aggregator::Http::Request.new(pb_to_array(pb_request.headers), pb_request.body, nil)
-            response = @response_io.process_request(request)
-            session_id = Metasploit::Aggregator::Http::Request.parse_uri(request)
-            pb_request = Metasploit::Aggregator::Message::Request.new( headers: response.headers, body: response.body )
-            pb_response = Metasploit::Aggregator::Message::Response.new( uuid: session_id, response: pb_request)
-            @response_queue.push(pb_response)
+          begin
+            requests.each do |pb_request|
+              request = Metasploit::Aggregator::Http::Request.new(pb_to_array(pb_request.headers), pb_request.body, nil)
+              response = @response_io.process_request(request)
+              session_id = Metasploit::Aggregator::Http::Request.parse_uri(request)
+              pb_request = Metasploit::Aggregator::Message::Request.new( headers: response.headers, body: response.body )
+              pb_response = Metasploit::Aggregator::Message::Response.new( uuid: session_id, response: pb_request)
+              @response_queue.push(pb_response)
+            end
+          rescue GRPC::Unavailable
+            false # The remote connection has ended stop this processing thread.
           end
         end
         ServerProxy.register_for_cleanup self
@@ -357,6 +361,7 @@ module Metasploit
           while true
             request = @local_server.request(uuid)
             # TODO: with this in place we can just get the request queue and pop each item to process and forward
+            sleep 0.1
             unless request.nil?
               body = ""
               body = request.body unless request.body.nil?
