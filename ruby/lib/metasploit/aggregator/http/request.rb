@@ -35,15 +35,29 @@ module Metasploit
             body = http_request.body
           end
           message_headers = []
-          message_headers << 'HTTP/1.1 200 OK'
-          message_headers << 'Content-Type: application/octet-stream'
-          message_headers << 'Connection: close'
-          message_headers << 'Server: Apache'
-          message_headers << 'Content-Length: ' + body.length.to_s
-          message_headers << ' '
-          message_headers << ' '
+          message_headers << 'HTTP/1.1 200 OK' + "\n"
+          message_headers << 'Content-Type: application/octet-stream' + "\n"
+          message_headers << 'Connection: close' + "\n"
+          message_headers << 'Server: Apache' + "\n"
+          message_headers << 'Content-Length: ' + body.length.to_s + "\n"
+          message_headers << '' + "\n"
+          message_headers << '' + "\n"
           self.new(message_headers, body, socket)
         end
+
+        def self.forge_request(uri, body, socket = nil)
+          message_headers = []
+          message_headers << "POST #{uri}/ HTTP/1.1" + "\n"
+          message_headers << 'Accept-Encoding: identity' + "\n"
+          message_headers << 'Content-Length: ' + body.length.to_s + "\n"
+          message_headers << 'Host: 127.0.0.1:2447' + "\n" # this value is defaulted to reflect the aggregator
+          message_headers << 'Content-Type: application/octet-stream' + "\n"
+          message_headers << 'Connection: close' + "\n"
+          message_headers << 'User-Agent: Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko'+ "\n"
+          message_headers << '' + "\n"
+          self.new(message_headers, body, socket)
+        end
+
       end
     end
   end

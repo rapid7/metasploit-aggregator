@@ -1,5 +1,6 @@
 require "metasploit/aggregator/session_detail_service"
 require "metasploit/aggregator/http/request"
+require "metasploit/aggregator/logger"
 
 module Metasploit
   module Aggregator
@@ -40,12 +41,6 @@ module Metasploit
                 next
               end
 
-              if is_core_negotiate_tlv_encryption(request_task)
-                send_response(create_negative_response(request_task), connection)
-                log 'suppressed core_negotiate_tlv_encryption'
-                next
-              end
-
               # response from get_forward will be a queue to push messages onto and a response queue to retrieve result from
               @session_service.add_request(request_task, @uri)
               send << request_task
@@ -54,14 +49,35 @@ module Metasploit
               log 'queued to console'
 
               # now get the response once available and send back using this connection
-              request_obj = recv.pop
-              @session_service.add_request(request_task, @uri)
-              send_response(request_obj, connection)
-              log 'message delivered from console'
+              begin
+                request_obj = recv.pop
+                @session_service.add_request(request_obj, @uri)
+                tlv_response = @session_service.eval_tlv_enc(request_obj)
+                unless tlv_response.nil?
+                  # build a new request with a the new tlv
+                  suppression = Metasploit::Aggregator::Http::Request.forge_request(@uri, tlv_response.to_r, connection)
+                  send << suppression
+                  log "Suppressing cryptTLV on session #{@uri}"
+                  send << request_task
+                  request_obj = recv.pop
+                  @session_service.add_request(suppression, @uri)
+                end
+                @pending_request = nil
+                request_obj.headers.each do |line|
+                  connection.write line
+                end
+                unless request_obj.body.nil?
+                  connection.write request_obj.body
+                end
+                connection.flush
+                @session_service.add_request(request_obj, @uri)
+                log 'message delivered from console'
+              rescue Exception
+                log "error processing console response for #{@uri}"
+              end
+              close_connection(connection)
             rescue Exception => e
               log "an error occurred processing request from #{@uri}"
-            ensure
-              close_connection(connection)
             end
           end
 
@@ -90,14 +106,6 @@ module Metasploit
             connection.write request_obj.body
           end
           connection.flush
-        end
-
-        def create_negative_response(request_task)
-          Metasploit::Aggregator::Http::Request.new request_task.headers, request_task.body, request_task.socket
-        end
-
-        def is_core_negotiate_tlv_encryption(request_task)
-          false
         end
 
         def self.get_data(connection, guaranteed_length)

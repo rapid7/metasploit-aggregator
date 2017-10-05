@@ -1,4 +1,6 @@
 # -*- coding: binary -*-
+require 'openssl'
+require 'rex/text'
 
 module Metasploit
   module Aggregator
@@ -113,6 +115,15 @@ module Metasploit
       TLV_TYPE_ENC_SYM_KEY         = TLV_META_TYPE_RAW    | 553
 
 #
+# Pivots
+#
+      TLV_TYPE_PIVOT_ID              = TLV_META_TYPE_RAW    |  650
+      TLV_TYPE_PIVOT_STAGE_DATA      = TLV_META_TYPE_RAW    |  651
+      TLV_TYPE_PIVOT_STAGE_DATA_SIZE = TLV_META_TYPE_UINT   |  652
+      TLV_TYPE_PIVOT_NAMED_PIPE_NAME = TLV_META_TYPE_STRING |  653
+
+
+#
 # Core flags
 #
       LOAD_LIBRARY_FLAG_ON_DISK   = (1 << 0)
@@ -131,6 +142,12 @@ module Metasploit
       TLV_TYPE_DOMAIN                 = TLV_META_TYPE_STRING  | 1046
       TLV_TYPE_LOGGED_ON_USER_COUNT   = TLV_META_TYPE_UINT    | 1047
       TLV_TYPE_LOCAL_DATETIME         = TLV_META_TYPE_STRING  | 1048
+
+#
+# Sane defaults
+#
+      GUID_SIZE = 16
+      NULL_GUID = "\x00" * GUID_SIZE
 
 ###
 #
@@ -291,14 +308,17 @@ module Metasploit
             # set this TLV as using compression
             @compress = true
             # remove the TLV_META_TYPE_COMPRESSED flag from the tlv type to restore the
-            # tlv type to its origional, allowing for transparent data compression.
+            # tlv type to its original, allowing for transparent data compression.
             self.type = self.type ^ TLV_META_TYPE_COMPRESSED
             # decompress the compressed data (skipping the length and type DWORD's)
-            raw_decompressed = Rex::Text.zlib_inflate( raw[HEADER_SIZE..length-1] )
-            # update the length to reflect the decompressed data length (+HEADER_SIZE for the length and type DWORD's)
-            length = raw_decompressed.length + HEADER_SIZE
-            # update the raw buffer with the new length, decompressed data and updated type.
-            raw = [length, self.type].pack("NN") + raw_decompressed
+
+            # disable raw_decompression for now - not needed by aggregator at this time
+            # raw_decompressed = Rex::Text.zlib_inflate( raw[HEADER_SIZE..length-1] )
+            #
+            # # update the length to reflect the decompressed data length (+HEADER_SIZE for the length and type DWORD's)
+            # length = raw_decompressed.length + HEADER_SIZE
+            # # update the raw buffer with the new length, decompressed data and updated type.
+            # raw = [length, self.type].pack("NN") + raw_decompressed
           end
 
           if (self.type & TLV_META_TYPE_STRING == TLV_META_TYPE_STRING)
@@ -572,6 +592,8 @@ module Metasploit
         attr_accessor :created_at
         attr_accessor :raw
         attr_accessor :session_guid
+        attr_accessor :encrypt_flags
+        attr_accessor :length
 
         ##
         #
@@ -602,11 +624,10 @@ module Metasploit
         ###
 
         XOR_KEY_SIZE = 4
-        SESSION_GUID_SIZE = 16
         ENCRYPTED_FLAGS_SIZE = 4
         PACKET_LENGTH_SIZE = 4
         PACKET_TYPE_SIZE = 4
-        PACKET_HEADER_SIZE = XOR_KEY_SIZE + SESSION_GUID_SIZE + ENCRYPTED_FLAGS_SIZE + PACKET_LENGTH_SIZE + PACKET_TYPE_SIZE
+        PACKET_HEADER_SIZE = XOR_KEY_SIZE + GUID_SIZE + ENCRYPTED_FLAGS_SIZE + PACKET_LENGTH_SIZE + PACKET_TYPE_SIZE
 
         AES_IV_SIZE = 16
 
@@ -632,6 +653,7 @@ module Metasploit
         def Packet.create_response(request = nil)
           response_type = PACKET_TYPE_RESPONSE
           method = nil
+          id = nil
 
           if (request)
             if (request.type?(PACKET_TYPE_PLAIN_REQUEST))
@@ -639,9 +661,19 @@ module Metasploit
             end
 
             method = request.method
+
+            if request.has_tlv?(TLV_TYPE_REQUEST_ID)
+              id = request.get_tlv_value(TLV_TYPE_REQUEST_ID)
+            end
           end
 
-          Packet.new(response_type, method)
+          packet = Packet.new(response_type, method)
+
+          if id
+            packet.add_tlv(TLV_TYPE_REQUEST_ID, id)
+          end
+
+          packet
         end
 
         ##
@@ -734,7 +766,7 @@ module Metasploit
         def to_r(session_guid = nil, key = nil)
           xor_key = (rand(254) + 1).chr + (rand(254) + 1).chr + (rand(254) + 1).chr + (rand(254) + 1).chr
 
-          raw = [(session_guid || '00' * SESSION_GUID_SIZE).gsub(/-/, '')].pack('H*')
+          raw = (session_guid || NULL_GUID).dup
           tlv_data = GroupTlv.instance_method(:to_r).bind(self).call
 
           if key && key[:key] && key[:type] == ENC_FLAG_AES256
@@ -765,6 +797,12 @@ module Metasploit
           end
         end
 
+        def parse_header!
+          xor_key = self.raw.unpack('a4')[0]
+          data = xor_bytes(xor_key, self.raw[0..PACKET_HEADER_SIZE])
+          _, self.session_guid, self.encrypt_flags, self.length, self.type = data.unpack('a4a16NNN')
+        end
+
         #
         # Override the function that reads from a raw byte stream so
         # that the XORing of data is included in the process prior to
@@ -772,11 +810,11 @@ module Metasploit
         # the TLV values.
         #
         def from_r(key=nil)
+          self.parse_header!
           xor_key = self.raw.unpack('a4')[0]
-          data = xor_bytes(xor_key, self.raw)
-          _, self.session_guid, encrypt_flags, length, type = data.unpack('a4a16NNN')
-          raw = decrypt_packet(key, encrypt_flags, data[PACKET_HEADER_SIZE..-1])
-          super([length, type, raw].pack('NNA*'))
+          data = xor_bytes(xor_key, self.raw[PACKET_HEADER_SIZE..-1])
+          raw = decrypt_packet(key, self.encrypt_flags, data)
+          super([self.length, self.type, raw].pack('NNA*'))
         end
 
         #
