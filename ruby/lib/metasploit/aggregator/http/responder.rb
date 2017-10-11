@@ -1,5 +1,6 @@
 require "metasploit/aggregator/session_detail_service"
 require "metasploit/aggregator/http/request"
+require "metasploit/aggregator/logger"
 
 module Metasploit
   module Aggregator
@@ -50,7 +51,17 @@ module Metasploit
               # now get the response once available and send back using this connection
               begin
                 request_obj = recv.pop
-                @session_service.add_request(request_task, @uri)
+                @session_service.add_request(request_obj, @uri)
+                tlv_response = @session_service.eval_tlv_enc(request_obj)
+                unless tlv_response.nil?
+                  # build a new request with a the new tlv
+                  suppression = Metasploit::Aggregator::Http::Request.forge_request(@uri, tlv_response.to_r, connection)
+                  send << suppression
+                  log "Suppressing cryptTLV on session #{@uri}"
+                  send << request_task
+                  request_obj = recv.pop
+                  @session_service.add_request(suppression, @uri)
+                end
                 @pending_request = nil
                 request_obj.headers.each do |line|
                   connection.write line
@@ -59,9 +70,10 @@ module Metasploit
                   connection.write request_obj.body
                 end
                 connection.flush
+                @session_service.add_request(request_obj, @uri)
                 log 'message delivered from console'
-              rescue
-                log $!
+              rescue Exception
+                log "error processing console response for #{@uri}"
               end
               close_connection(connection)
             rescue Exception => e
@@ -82,10 +94,18 @@ module Metasploit
         def send_parked_response(connection)
           address = connection.peeraddr[3]
           log "sending parked response to #{address}"
-          Metasploit::Aggregator::Http::Request.parked.headers.each do |line|
-            connection.puts line
+          send_response(Metasploit::Aggregator::Http::Request.parked, connection)
+        end
+
+        def send_response(request_obj, connection)
+          @pending_request = nil
+          request_obj.headers.each do |line|
+            connection.write line
           end
-          close_connection(connection)
+          unless request_obj.body.nil?
+            connection.write request_obj.body
+          end
+          connection.flush
         end
 
         def self.get_data(connection, guaranteed_length)
@@ -114,7 +134,7 @@ module Metasploit
               body += connection.read(content_length - body.length)
             end
           end
-          Request.new request_lines, body, connection
+          Metasploit::Aggregator::Http::Request.new request_lines, body, connection
         end
 
         def get_connection(host, port)
