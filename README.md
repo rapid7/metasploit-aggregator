@@ -38,7 +38,14 @@ Metasploit Aggregator introduces a few new concepts.
 * A **‘forwarded’** session is one that terminates at the aggregator, but is then proxied to a msfconsole instance. The session is forwarded over a control channel connection to the aggregator. When you are done interacting with a session, it can be moved back to a ‘parked’ state for other users to use. Note: any user can steal a session if desired and forward it to a different msfconsole instance.
 
 ## Installing
-Standalone installation: ```gem install metasploit-aggregator```.
+**Curently Unavailable due to issue #6** ~~Standalone installation: ```gem install metasploit-aggregator```.~~
+
+Intermediate solutions are available:  
+* Install Metasploit on the host used as the aggregator and start from path provided by install
+* Checkout source from git and install dependencies to execute in limited context:
+  * `cd <PATH_TO_CHECKOUT>/ruby`
+  * `bundle install`
+  * `./bin/metasploit-aggregator`
 
 ## Usage
 
