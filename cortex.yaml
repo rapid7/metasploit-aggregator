@@ -1,0 +1,15 @@
+---
+info:
+  title: Metasploit Aggregator
+  description: Created by Jeffrey Martin via the GitHub Connector
+  x-cortex-git:
+    github:
+      alias: r7org
+      repository: rapid7/metasploit-aggregator
+  x-cortex-tag: metasploit-aggregator
+  x-cortex-type: service
+  x-cortex-domain-parents:
+  - tag: metasploit
+openapi: 3.0.1
+servers:
+- url: "/"
